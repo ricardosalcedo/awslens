@@ -228,7 +228,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.modalOK = nil
 		m.err = nil
 		// re-fetch the current service list
-		return m.enterService()
+		return m.reloadService()
 	case writeErrMsg:
 		m.modal.reset()
 		m.modalOK = nil
@@ -540,7 +540,7 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		}
 		m.adjustScroll()
 	case "r":
-		return m.enterService()
+		return m.reloadService()
 	case "enter", " ":
 		return m.enterDetail()
 	case "n":
@@ -711,6 +711,10 @@ func (m model) enterDetail() (model, tea.Cmd) {
 
 func (m model) enterService() (model, tea.Cmd) {
 	m.current = menu[m.cursor].v
+	return m.reloadService()
+}
+
+func (m model) reloadService() (model, tea.Cmd) {
 	m.cursor = 0
 	m.scroll = 0
 	m.loading = true
