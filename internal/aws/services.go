@@ -34,6 +34,9 @@ type Instance struct {
 }
 
 func (c *Client) ListInstances(ctx context.Context) ([]Instance, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ec2.NewFromConfig(c.Config)
 	out, err := svc.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
 	if err != nil {
@@ -67,18 +70,27 @@ func (c *Client) ListInstances(ctx context.Context) ([]Instance, error) {
 }
 
 func (c *Client) StartInstance(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ec2.NewFromConfig(c.Config)
 	_, err := svc.StartInstances(ctx, &ec2.StartInstancesInput{InstanceIds: []string{id}})
 	return err
 }
 
 func (c *Client) StopInstance(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ec2.NewFromConfig(c.Config)
 	_, err := svc.StopInstances(ctx, &ec2.StopInstancesInput{InstanceIds: []string{id}})
 	return err
 }
 
 func (c *Client) ListSecurityGroups(ctx context.Context) ([]ec2types.SecurityGroup, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ec2.NewFromConfig(c.Config)
 	out, err := svc.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{})
 	if err != nil {
@@ -101,6 +113,9 @@ type Function struct {
 }
 
 func (c *Client) ListFunctions(ctx context.Context) ([]Function, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := lambda.NewFromConfig(c.Config)
 	var fns []Function
 	paginator := lambda.NewListFunctionsPaginator(svc, &lambda.ListFunctionsInput{})
@@ -126,6 +141,9 @@ func (c *Client) ListFunctions(ctx context.Context) ([]Function, error) {
 }
 
 func (c *Client) InvokeFunction(ctx context.Context, name string, payload []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := lambda.NewFromConfig(c.Config)
 	out, err := svc.Invoke(ctx, &lambda.InvokeInput{
 		FunctionName: aws.String(name),
@@ -146,6 +164,9 @@ type Bucket struct {
 }
 
 func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := s3.NewFromConfig(c.Config)
 	out, err := svc.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err != nil {
@@ -182,6 +203,9 @@ type DBInstance struct {
 }
 
 func (c *Client) ListDBInstances(ctx context.Context) ([]DBInstance, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := rds.NewFromConfig(c.Config)
 	out, err := svc.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{})
 	if err != nil {
@@ -215,6 +239,9 @@ type Cluster struct {
 }
 
 func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ecs.NewFromConfig(c.Config)
 	arns, err := svc.ListClusters(ctx, &ecs.ListClustersInput{})
 	if err != nil {
@@ -250,6 +277,9 @@ type Queue struct {
 }
 
 func (c *Client) ListQueues(ctx context.Context) ([]Queue, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := sqs.NewFromConfig(c.Config)
 	out, err := svc.ListQueues(ctx, &sqs.ListQueuesInput{})
 	if err != nil {
@@ -283,6 +313,9 @@ type Topic struct {
 }
 
 func (c *Client) ListTopics(ctx context.Context) ([]Topic, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := sns.NewFromConfig(c.Config)
 	out, err := svc.ListTopics(ctx, &sns.ListTopicsInput{})
 	if err != nil {
@@ -306,6 +339,9 @@ type Stack struct {
 }
 
 func (c *Client) ListStacks(ctx context.Context) ([]Stack, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := cloudformation.NewFromConfig(c.Config)
 	out, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{})
 	if err != nil {
@@ -332,6 +368,9 @@ type CostEntry struct {
 }
 
 func (c *Client) GetMonthlyCosts(ctx context.Context) ([]CostEntry, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := costexplorer.NewFromConfig(c.Config)
 	now := time.Now()
 	start := fmt.Sprintf("%d-%02d-01", now.Year(), now.Month())
@@ -485,6 +524,8 @@ func AllRegionsSecrets(ctx context.Context, c *Client) []Secret {
 // aggregateRegions fans out a fetch function across all common regions in parallel
 // and merges results, silently ignoring regions with no resources or errors.
 func aggregateRegions[T any](ctx context.Context, c *Client, fn func(context.Context, *Client) ([]T, error)) []T {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	type result struct{ items []T }
 	ch := make(chan result, len(CommonRegions))
 	for _, r := range CommonRegions {

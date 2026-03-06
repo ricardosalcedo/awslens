@@ -78,12 +78,13 @@ type detailModel struct {
 	alarmHistory []string
 	ssmParamName string
 	ssmValue     string
+	masked       bool // true = hide sensitive values (default)
 	// tab within a detail view (e.g. lambda: config/env/logs)
 	tab int
 }
 
 func (d *detailModel) reset() {
-	*d = detailModel{}
+	*d = detailModel{masked: true}
 }
 
 // ── detail update (called from main model.Update) ─────────────────────────────
@@ -360,9 +361,13 @@ func (d *detailModel) lambdaDetailView() string {
 		} else {
 			var lines []string
 			for k, v := range fn.EnvVars {
+				if d.masked {
+					v = "••••••••"
+				}
 				lines = append(lines, fmt.Sprintf("  %-40s = %s", k, v))
 			}
 			body = "\n" + strings.Join(lines, "\n")
+			body += "\n" + helpStyle.Render("\n  s toggle mask")
 		}
 	case 2: // Triggers
 		if len(fn.Triggers) == 0 {
@@ -626,8 +631,12 @@ func (d *detailModel) ssmValueView() string {
 	var b strings.Builder
 	b.WriteString(headerStyle.Render("  SSM PARAMETER VALUE") + "\n\n")
 	b.WriteString(fmt.Sprintf("  Name:  %s\n\n", lipgloss.NewStyle().Foreground(cyan).Render(d.ssmParamName)))
-	b.WriteString(fmt.Sprintf("  Value: %s\n", d.ssmValue))
-	b.WriteString(helpStyle.Render("\nesc back"))
+	val := d.ssmValue
+	if d.masked {
+		val = "••••••••  (press s to reveal)"
+	}
+	b.WriteString(fmt.Sprintf("  Value: %s\n", val))
+	b.WriteString(helpStyle.Render("\ns toggle mask • esc back"))
 	return b.String()
 }
 

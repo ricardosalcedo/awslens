@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
@@ -30,6 +31,9 @@ type CacheCluster struct {
 }
 
 func (c *Client) ListCacheClusters(ctx context.Context) ([]CacheCluster, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := elasticache.NewFromConfig(c.Config)
 	out, err := svc.DescribeCacheClusters(ctx, nil)
 	if err != nil {
@@ -66,6 +70,9 @@ type OSDomainDetail struct {
 }
 
 func (c *Client) ListOSDomains(ctx context.Context) ([]OSDomain, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := opensearch.NewFromConfig(c.Config)
 	out, err := svc.ListDomainNames(ctx, nil)
 	if err != nil {
@@ -79,6 +86,9 @@ func (c *Client) ListOSDomains(ctx context.Context) ([]OSDomain, error) {
 }
 
 func (c *Client) GetOSDomainDetail(ctx context.Context, name string) (*OSDomainDetail, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := opensearch.NewFromConfig(c.Config)
 	out, err := svc.DescribeDomain(ctx, &opensearch.DescribeDomainInput{DomainName: aws.String(name)})
 	if err != nil {
@@ -110,6 +120,9 @@ type MSKCluster struct {
 }
 
 func (c *Client) ListMSKClusters(ctx context.Context) ([]MSKCluster, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := kafka.NewFromConfig(c.Config)
 	out, err := svc.ListClusters(ctx, nil)
 	if err != nil {
@@ -151,6 +164,9 @@ type GlueJob struct {
 }
 
 func (c *Client) ListGlueDatabases(ctx context.Context) ([]GlueDatabase, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := glue.NewFromConfig(c.Config)
 	out, err := svc.GetDatabases(ctx, nil)
 	if err != nil {
@@ -168,6 +184,9 @@ func (c *Client) ListGlueDatabases(ctx context.Context) ([]GlueDatabase, error) 
 }
 
 func (c *Client) ListGlueJobs(ctx context.Context) ([]GlueJob, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := glue.NewFromConfig(c.Config)
 	out, err := svc.GetJobs(ctx, nil)
 	if err != nil {
@@ -206,6 +225,9 @@ type AthenaQuery struct {
 }
 
 func (c *Client) ListAthenaWorkgroups(ctx context.Context) ([]AthenaWorkgroup, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := athena.NewFromConfig(c.Config)
 	out, err := svc.ListWorkGroups(ctx, nil)
 	if err != nil {
@@ -224,6 +246,9 @@ func (c *Client) ListAthenaWorkgroups(ctx context.Context) ([]AthenaWorkgroup, e
 }
 
 func (c *Client) ListAthenaSavedQueries(ctx context.Context) ([]AthenaQuery, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := athena.NewFromConfig(c.Config)
 	ids, err := svc.ListNamedQueries(ctx, nil)
 	if err != nil || len(ids.NamedQueryIds) == 0 {
@@ -256,6 +281,9 @@ type CodeRepo struct {
 }
 
 func (c *Client) ListCodeRepos(ctx context.Context) ([]CodeRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := codecommit.NewFromConfig(c.Config)
 	out, err := svc.ListRepositories(ctx, nil)
 	if err != nil {
@@ -298,6 +326,9 @@ type PipelineExecution struct {
 }
 
 func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := codepipeline.NewFromConfig(c.Config)
 	out, err := svc.ListPipelines(ctx, nil)
 	if err != nil {
@@ -319,6 +350,9 @@ func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
 }
 
 func (c *Client) ListPipelineExecutions(ctx context.Context, name string) ([]PipelineExecution, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := codepipeline.NewFromConfig(c.Config)
 	out, err := svc.ListPipelineExecutions(ctx, &codepipeline.ListPipelineExecutionsInput{
 		PipelineName: aws.String(name),
@@ -355,6 +389,9 @@ type BuildProject struct {
 }
 
 func (c *Client) ListBuildProjects(ctx context.Context) ([]BuildProject, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := codebuild.NewFromConfig(c.Config)
 	names, err := svc.ListProjects(ctx, nil)
 	if err != nil || len(names.Projects) == 0 {
@@ -398,6 +435,9 @@ type EBTarget struct {
 }
 
 func (c *Client) ListEBRules(ctx context.Context) ([]EBRule, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := eventbridge.NewFromConfig(c.Config)
 	out, err := svc.ListRules(ctx, nil)
 	if err != nil {
@@ -417,6 +457,9 @@ func (c *Client) ListEBRules(ctx context.Context) ([]EBRule, error) {
 }
 
 func (c *Client) ListEBTargets(ctx context.Context, rule string) ([]EBTarget, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := eventbridge.NewFromConfig(c.Config)
 	out, err := svc.ListTargetsByRule(ctx, &eventbridge.ListTargetsByRuleInput{Rule: aws.String(rule)})
 	if err != nil {
@@ -443,6 +486,9 @@ type WAFWebACL struct {
 }
 
 func (c *Client) ListWAFWebACLs(ctx context.Context) ([]WAFWebACL, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := wafv2.NewFromConfig(c.Config)
 	var acls []WAFWebACL
 	for _, scope := range []waftypes.Scope{waftypes.ScopeRegional} {

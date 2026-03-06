@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"time"
 	"encoding/json"
 	"fmt"
 
@@ -27,6 +28,8 @@ type bedrockResponse struct {
 }
 
 func (c *Client) GetInsight(ctx context.Context, resourceSummary string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	body, _ := json.Marshal(bedrockRequest{
 		AnthropicVersion: "bedrock-2023-05-31",
 		MaxTokens:        200,

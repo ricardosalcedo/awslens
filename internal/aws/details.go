@@ -29,6 +29,8 @@ type FunctionDetail struct {
 }
 
 func (c *Client) GetFunctionDetail(ctx context.Context, name string) (*FunctionDetail, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := lambda.NewFromConfig(c.Config)
 	out, err := svc.GetFunction(ctx, &lambda.GetFunctionInput{FunctionName: aws.String(name)})
 	if err != nil {
@@ -66,6 +68,8 @@ func (c *Client) GetFunctionDetail(ctx context.Context, name string) (*FunctionD
 }
 
 func (c *Client) GetFunctionLogs(ctx context.Context, functionName string, limit int32) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudwatchlogs.NewFromConfig(c.Config)
 	logGroup := fmt.Sprintf("/aws/lambda/%s", functionName)
 
@@ -108,6 +112,8 @@ type S3Object struct {
 }
 
 func (c *Client) ListObjects(ctx context.Context, bucket string, prefix string) ([]S3Object, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := s3.NewFromConfig(c.Config)
 	out, err := svc.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket:    aws.String(bucket),
@@ -139,6 +145,8 @@ func (c *Client) ListObjects(ctx context.Context, bucket string, prefix string) 
 }
 
 func (c *Client) GetBucketPolicy(ctx context.Context, bucket string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := s3.NewFromConfig(c.Config)
 	out, err := svc.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{Bucket: aws.String(bucket)})
 	if err != nil {
@@ -171,6 +179,8 @@ type StackResource struct {
 }
 
 func (c *Client) GetStackEvents(ctx context.Context, stackName string) ([]StackEvent, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudformation.NewFromConfig(c.Config)
 	out, err := svc.DescribeStackEvents(ctx, &cloudformation.DescribeStackEventsInput{
 		StackName: aws.String(stackName),
@@ -196,6 +206,8 @@ func (c *Client) GetStackEvents(ctx context.Context, stackName string) ([]StackE
 }
 
 func (c *Client) GetStackResources(ctx context.Context, stackName string) ([]StackResource, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudformation.NewFromConfig(c.Config)
 	out, err := svc.ListStackResources(ctx, &cloudformation.ListStackResourcesInput{
 		StackName: aws.String(stackName),
@@ -216,6 +228,8 @@ func (c *Client) GetStackResources(ctx context.Context, stackName string) ([]Sta
 }
 
 func (c *Client) GetStackOutputs(ctx context.Context, stackName string) ([]StackOutput, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudformation.NewFromConfig(c.Config)
 	out, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
 		StackName: aws.String(stackName),
@@ -243,6 +257,8 @@ type Subscription struct {
 }
 
 func (c *Client) GetTopicSubscriptions(ctx context.Context, topicARN string) ([]Subscription, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := sns.NewFromConfig(c.Config)
 	out, err := svc.ListSubscriptionsByTopic(ctx, &sns.ListSubscriptionsByTopicInput{
 		TopicArn: aws.String(topicARN),

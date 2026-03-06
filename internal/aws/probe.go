@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
@@ -44,6 +45,9 @@ type ServiceAccess struct {
 // ProbeAccess checks which services the current credentials can access.
 // It runs all probes in parallel for speed.
 func (c *Client) ProbeAccess(ctx context.Context) map[string]bool {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	
 	probes := map[string]func() error{
 		"EC2": func() error {
 			_, err := ec2.NewFromConfig(c.Config).DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
@@ -113,8 +117,10 @@ func (c *Client) ProbeAccess(ctx context.Context) map[string]bool {
 			_, err := cloudformation.NewFromConfig(c.Config).DescribeStacks(ctx, &cloudformation.DescribeStacksInput{})
 			return err
 		},
-		// Costs always shown — no cheap probe for Cost Explorer
-		"Costs": func() error { return nil },
+		"Costs": func() error {
+			_, _, err := c.GetMonthlyCosts(ctx)
+			return err
+		},
 		"ElastiCache": func() error {
 			_, err := elasticache.NewFromConfig(c.Config).DescribeCacheClusters(ctx, nil)
 			return err
@@ -167,7 +173,7 @@ func (c *Client) ProbeAccess(ctx context.Context) map[string]bool {
 		go func() {
 			defer wg.Done()
 			err := probe()
-			allowed := err == nil || isNotFoundErr(err)
+			allowed := err == nil || isNotFoundErr(err) || !isAccessDenied(err)
 			mu.Lock()
 			results[name] = allowed
 			mu.Unlock()
@@ -186,6 +192,24 @@ func isNotFoundErr(err error) bool {
 	// these mean "allowed but empty", not "denied"
 	for _, ok := range []string{"NoSuchEntity", "NotFoundException", "ResourceNotFoundException"} {
 		if contains(s, ok) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAccessDenied returns true only for definitive auth/permission errors.
+// Throttling, timeouts, and network errors are NOT treated as denied.
+func isAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	for _, deny := range []string{
+		"AccessDenied", "UnauthorizedOperation", "AuthorizationError",
+		"AccessDeniedException", "StatusCode: 403",
+	} {
+		if contains(s, deny) {
 			return true
 		}
 	}

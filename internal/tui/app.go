@@ -151,6 +151,9 @@ type model struct {
 	client  *awsclient.Client
 	current view
 	cursor  int
+	scroll  int // scroll offset for viewport
+	filter  string // active filter text
+	filtering bool // true when typing filter
 	width   int
 	height  int
 	loading bool
@@ -309,6 +312,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case accessMsg:
 		m.probing = false
 		m.access = map[string]bool(msg)
+		// ensure cursor is on an accessible item
+		if !m.access[menu[m.cursor].label] {
+			for i, item := range menu {
+				if m.access[item.label] {
+					m.cursor = i
+					break
+				}
+			}
+		}
 		return m, nil
 	case errMsg:
 		m.loading = false
@@ -430,6 +442,8 @@ func (m model) handleDetailKey(msg tea.KeyMsg) (model, tea.Cmd) {
 				m.detail.tab++
 			}
 		}
+	case "s":
+		m.detail.masked = !m.detail.masked
 	// Lambda: press L to view logs
 	case "L":
 		if m.detail.active == detailLambda && m.detail.lambdaDetail != nil {
@@ -476,20 +490,55 @@ func (m model) handleDetailKey(msg tea.KeyMsg) (model, tea.Cmd) {
 }
 
 func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
+	// filter input mode
+	if m.filtering {
+		switch msg.String() {
+		case "esc":
+			m.filtering = false
+			m.filter = ""
+			m.cursor = 0
+			m.scroll = 0
+		case "enter":
+			m.filtering = false
+		case "backspace":
+			if len(m.filter) > 0 {
+				m.filter = m.filter[:len(m.filter)-1]
+				m.cursor = 0
+				m.scroll = 0
+			}
+		default:
+			if len(msg.String()) == 1 {
+				m.filter += msg.String()
+				m.cursor = 0
+				m.scroll = 0
+			}
+		}
+		return m, nil
+	}
+
 	maxC := m.maxCursor()
 	switch msg.String() {
 	case "q", "esc":
+		if m.filter != "" {
+			m.filter = ""
+			m.cursor = 0
+			m.scroll = 0
+			return m, nil
+		}
 		m.current = viewDashboard
 		m.cursor = 0
+		m.scroll = 0
 		m.err = nil
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
 		}
+		m.adjustScroll()
 	case "down", "j":
 		if m.cursor < maxC {
 			m.cursor++
 		}
+		m.adjustScroll()
 	case "r":
 		return m.enterService()
 	case "enter", " ":
@@ -506,6 +555,9 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return m.handlePurge()
 	case "t":
 		return m.handleToggle()
+	case "/":
+		m.filtering = true
+		m.filter = ""
 	}
 	return m, nil
 }
@@ -660,6 +712,7 @@ func (m model) enterDetail() (model, tea.Cmd) {
 func (m model) enterService() (model, tea.Cmd) {
 	m.current = menu[m.cursor].v
 	m.cursor = 0
+	m.scroll = 0
 	m.loading = true
 	m.err = nil
 	client := m.client
@@ -830,7 +883,35 @@ func (m model) View() string {
 	}
 
 	body := m.serviceView()
-	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • r refresh • esc/q back" + m.crudHint())
+	// apply filter
+	if m.filter != "" {
+		bodyLines := strings.Split(body, "\n")
+		var filtered []string
+		lowerFilter := strings.ToLower(m.filter)
+		for i, line := range bodyLines {
+			if i == 0 || strings.Contains(strings.ToLower(line), lowerFilter) {
+				filtered = append(filtered, line)
+			}
+		}
+		body = strings.Join(filtered, "\n")
+	}
+	// apply scroll viewport
+	bodyLines := strings.Split(body, "\n")
+	visible := m.height - 6
+	if visible < 5 {
+		visible = 5
+	}
+	if len(bodyLines) > visible {
+		bodyLines = scrollLines(bodyLines, m.scroll, visible)
+		body = strings.Join(bodyLines, "\n")
+	}
+	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • / filter • r refresh • esc/q back" + m.crudHint())
+	if m.filtering {
+		help = warnStyle.Render("\n  filter: " + m.filter + "█  (enter confirm • esc clear)")
+	} else if m.filter != "" {
+		help = helpStyle.Render(fmt.Sprintf("\n  filtered: %q • esc clear • / change", m.filter)) +
+			helpStyle.Render(" • ↑/↓ navigate • enter drill-down")
+	}
 	page := bar + "  " + breadcrumb + "\n\n" + body + help
 	if m.modal.active() {
 		lines := strings.Split(page, "\n")
@@ -1013,812 +1094,29 @@ func rowLine(cursor, i int, line string) string {
 	return "  " + line
 }
 
-func (m model) ec2View() string {
-	if len(m.instances) == 0 {
-		return mutedStyle.Render("  No EC2 instances running in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-20s %-12s %-14s %-14s %-16s %s",
-		"NAME/ID", "STATE", "TYPE", "REGION", "PUBLIC IP", "LAUNCHED")) + "\n")
-	for i, inst := range m.instances {
-		name := inst.Name
-		if name == "" { name = inst.ID }
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-20s %-12s %-14s %-14s %-16s %s",
-			truncate(name, 20), stateColor(inst.State), inst.Type,
-			inst.Region, inst.PublicIP, inst.LaunchTime)) + "\n")
-	}
-	return b.String()
-}
 
-func (m model) lambdaView() string {
-	if len(m.functions) == 0 {
-		return mutedStyle.Render("  No Lambda functions deployed in this region")
+func (m *model) adjustScroll() {
+	visible := m.height - 6 // header + help lines
+	if visible < 5 {
+		visible = 5
 	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-36s %-14s %-14s %6s MB %6s s",
-		"NAME", "RUNTIME", "REGION", "MEM", "TIMEOUT")) + "\n")
-	for i, fn := range m.functions {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-36s %-14s %-14s %6d %6d",
-			truncate(fn.Name, 36), fn.Runtime, fn.Region, fn.Memory, fn.Timeout)) + "\n")
+	if m.cursor < m.scroll {
+		m.scroll = m.cursor
 	}
-	return b.String()
-}
-
-func (m model) s3View() string {
-	if len(m.buckets) == 0 {
-		return mutedStyle.Render("  No S3 buckets found in this account")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-50s %-16s %s", "BUCKET", "REGION", "CREATED")) + "\n")
-	for i, bkt := range m.buckets {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-50s %-16s %s",
-			truncate(bkt.Name, 50), bkt.Region, bkt.CreationDate)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) rdsView() string {
-	if len(m.dbs) == 0 {
-		return mutedStyle.Render("  No RDS databases found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-30s %-20s %-12s %-16s %s",
-		"ID", "ENGINE", "STATUS", "CLASS", "MULTI-AZ")) + "\n")
-	for i, db := range m.dbs {
-		multiAZ := "no"
-		if db.MultiAZ {
-			multiAZ = okStyle.Render("yes")
-		}
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-30s %-20s %-12s %-16s %s",
-			truncate(db.ID, 30), truncate(db.Engine, 20),
-			stateColor(db.Status), db.Class, multiAZ)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) ecsView() string {
-	if len(m.clusters) == 0 {
-		return mutedStyle.Render("  No ECS clusters found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-30s %-12s %8s %8s %8s",
-		"CLUSTER", "STATUS", "RUNNING", "PENDING", "SERVICES")) + "\n")
-	for i, cl := range m.clusters {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-30s %-12s %8d %8d %8d",
-			truncate(cl.Name, 30), stateColor(cl.Status),
-			cl.RunningTasks, cl.PendingTasks, cl.ActiveServices)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) sqsView() string {
-	if len(m.queues) == 0 {
-		return mutedStyle.Render("  No SQS queues found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-50s %10s %10s", "QUEUE", "MESSAGES", "IN-FLIGHT")) + "\n")
-	for i, q := range m.queues {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-50s %10s %10s",
-			truncate(q.Name, 50), q.Messages, q.MessagesInFlight)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) snsView() string {
-	if len(m.topics) == 0 {
-		return mutedStyle.Render("  No SNS topics found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-50s %s", "TOPIC", "ARN")) + "\n")
-	for i, t := range m.topics {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-50s %s",
-			truncate(t.Name, 50), mutedStyle.Render(truncate(t.ARN, 60)))) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) cfnView() string {
-	if len(m.stacks) == 0 {
-		return mutedStyle.Render("  No CloudFormation stacks found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-30s %s", "STACK", "STATUS", "DRIFT")) + "\n")
-	for i, s := range m.stacks {
-		drift := mutedStyle.Render(s.Drift)
-		if strings.Contains(s.Drift, "DRIFTED") {
-			drift = warnStyle.Render(s.Drift)
-		}
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-30s %s",
-			truncate(s.Name, 40), stateColor(s.Status), drift)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) costsView() string {
-	if len(m.costs) == 0 {
-		return mutedStyle.Render("  No cost data — Cost Explorer may not be enabled for this account")
-	}
-	sorted := awsclient.SortCostsByAmount(m.costs)
-
-	// find max for bar chart
-	var maxAmt float64
-	for _, c := range sorted {
-		var f float64
-		fmt.Sscanf(c.Amount, "%f", &f)
-		if f > maxAmt {
-			maxAmt = f
-		}
-	}
-
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s  %s", "SERVICE", "COST (USD)", "")) + "\n")
-	for i, c := range sorted {
-		var amt float64
-		fmt.Sscanf(c.Amount, "%f", &amt)
-		bar := awsclient.CostBar(amt, maxAmt, 20)
-		barColored := lipgloss.NewStyle().Foreground(orange).Render(bar)
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-45s %10s  %s",
-			truncate(c.Service, 45), fmt.Sprintf("$%.4f", amt), barColored)) + "\n")
-	}
-	b.WriteString("\n" + lipgloss.NewStyle().Foreground(orange).Bold(true).
-		Render(fmt.Sprintf("  Total this month: $%s", m.costTotal)) + "\n")
-	return b.String()
-}
-
-func (m model) dynamoView() string {
-	if len(m.tables) == 0 {
-		return mutedStyle.Render("  No DynamoDB tables found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-12s %10s %12s %-12s %s",
-		"TABLE", "STATUS", "ITEMS", "SIZE", "BILLING", "PK")) + "\n")
-	for i, t := range m.tables {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-12s %10d %12s %-12s %s",
-			truncate(t.Name, 40), stateColor(t.Status),
-			t.ItemCount, humanBytes(t.SizeBytes),
-			t.BillingMode, t.PKName)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) apigwView() string {
-	if len(m.apis) == 0 {
-		return mutedStyle.Render("  No API Gateway REST APIs found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-12s %-40s %-30s %s",
-		"ID", "NAME", "DESCRIPTION", "CREATED")) + "\n")
-	for i, a := range m.apis {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-12s %-40s %-30s %s",
-			a.ID, truncate(a.Name, 40),
-			truncate(a.Description, 30), a.CreatedDate)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) ecrView() string {
-	if len(m.repos) == 0 {
-		return mutedStyle.Render("  No ECR repositories found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-10s %-60s %s",
-		"NAME", "SCAN", "URI", "CREATED")) + "\n")
-	for i, r := range m.repos {
-		scan := mutedStyle.Render("off")
-		if r.ScanOnPush {
-			scan = okStyle.Render("on")
-		}
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-10s %-60s %s",
-			truncate(r.Name, 40), scan,
-			truncate(r.URI, 60), r.Created)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) sfnView() string {
-	if len(m.machines) == 0 {
-		return mutedStyle.Render("  No Step Functions state machines found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-10s %s",
-		"NAME", "TYPE", "CREATED")) + "\n")
-	for i, s := range m.machines {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-10s %s",
-			truncate(s.Name, 40), s.Type, s.Created)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) albView() string {
-	if len(m.lbs) == 0 {
-		return mutedStyle.Render("  No load balancers found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-30s %-6s %-12s %-12s %-50s %s",
-		"NAME", "TYPE", "SCHEME", "STATE", "DNS", "CREATED")) + "\n")
-	for i, lb := range m.lbs {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-30s %-6s %-12s %-12s %-50s %s",
-			truncate(lb.Name, 30), lb.Type, lb.Scheme,
-			stateColor(lb.State), truncate(lb.DNS, 50), lb.Created)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) route53View() string {
-	if len(m.zones) == 0 {
-		return mutedStyle.Render("  No Route53 hosted zones found in this account")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-50s %-10s %s",
-		"NAME", "TYPE", "RECORDS")) + "\n")
-	for i, z := range m.zones {
-		ztype := okStyle.Render("public")
-		if z.Private {
-			ztype = mutedStyle.Render("private")
-		}
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-50s %-10s %d",
-			truncate(z.Name, 50), ztype, z.Records)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) secretsView() string {
-	if len(m.secrets) == 0 {
-		return mutedStyle.Render("  No secrets found in Secrets Manager")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-30s %-12s %s",
-		"NAME", "DESCRIPTION", "CHANGED", "ACCESSED")) + "\n")
-	for i, s := range m.secrets {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-30s %-12s %s",
-			truncate(s.Name, 40), truncate(s.Description, 30),
-			s.LastChanged, s.LastAccessed)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) ssmView() string {
-	if len(m.params) == 0 {
-		return mutedStyle.Render("  No SSM parameters found in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-50s %-16s %-12s %s",
-		"NAME", "TYPE", "MODIFIED", "VERSION")) + "\n")
-	for i, p := range m.params {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-50s %-16s %-12s %d",
-			truncate(p.Name, 50), p.Type, p.LastModified, p.Version)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) cwView() string {
-	if len(m.alarms) == 0 {
-		return mutedStyle.Render("  No CloudWatch alarms configured in this region")
-	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-12s %-30s %-20s %-12s %s",
-		"ALARM", "STATE", "METRIC", "NAMESPACE", "THRESHOLD", "UPDATED")) + "\n")
-	for i, a := range m.alarms {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-12s %-30s %-20s %-12s %s",
-			truncate(a.Name, 40), alarmStateColor(a.State),
-			truncate(a.Metric, 30), truncate(a.Namespace, 20),
-			a.Threshold, a.Updated)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) elastiCacheView() string {
-	if len(m.cacheClusters) == 0 { return mutedStyle.Render("  No ElastiCache clusters found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-30s %-20s %-12s %-20s %-6s %s", "ID", "ENGINE", "STATUS", "NODE TYPE", "NODES", "REGION")) + "\n")
-	for i, c := range m.cacheClusters {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-30s %-20s %-12s %-20s %-6d %s",
-			truncate(c.ID, 30), truncate(c.Engine, 20), stateColor(c.Status), c.NodeType, c.Nodes, c.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) openSearchView() string {
-	if len(m.osDomains) == 0 { return mutedStyle.Render("  No OpenSearch domains found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %s", "DOMAIN", "REGION")) + "\n")
-	for i, d := range m.osDomains {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %s", truncate(d.Name, 40), d.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) mskView() string {
-	if len(m.mskClusters) == 0 { return mutedStyle.Render("  No MSK clusters found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-12s %-12s %-6s %s", "NAME", "STATE", "VERSION", "BROKERS", "REGION")) + "\n")
-	for i, c := range m.mskClusters {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-12s %-12s %-6d %s",
-			truncate(c.Name, 40), stateColor(c.State), c.Version, c.Brokers, c.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) glueView() string {
-	if len(m.glueDbs) == 0 { return mutedStyle.Render("  No Glue databases found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-40s %s", "DATABASE", "DESCRIPTION", "REGION")) + "\n")
-	for i, d := range m.glueDbs {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-40s %s",
-			truncate(d.Name, 40), truncate(d.Description, 40), d.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) athenaView() string {
-	if len(m.athenaWGs) == 0 { return mutedStyle.Render("  No Athena workgroups found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-30s %-12s %-40s %s", "WORKGROUP", "STATE", "DESCRIPTION", "REGION")) + "\n")
-	for i, wg := range m.athenaWGs {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-30s %-12s %-40s %s",
-			truncate(wg.Name, 30), stateColor(wg.State), truncate(wg.Description, 40), wg.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) codeCommitView() string {
-	if len(m.codeRepos) == 0 { return mutedStyle.Render("  No CodeCommit repositories found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-30s %-12s %s", "REPO", "DESCRIPTION", "MODIFIED", "REGION")) + "\n")
-	for i, r := range m.codeRepos {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-30s %-12s %s",
-			truncate(r.Name, 40), truncate(r.Description, 30), r.LastModified, r.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) codePipelineView() string {
-	if len(m.pipelines) == 0 { return mutedStyle.Render("  No CodePipeline pipelines found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-6s %-20s %s", "PIPELINE", "VER", "UPDATED", "REGION")) + "\n")
-	for i, p := range m.pipelines {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-6d %-20s %s",
-			truncate(p.Name, 40), p.Version, p.Updated, p.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) codeBuildView() string {
-	if len(m.buildProjects) == 0 { return mutedStyle.Render("  No CodeBuild projects found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-30s %-20s %s", "PROJECT", "DESCRIPTION", "LAST BUILD", "REGION")) + "\n")
-	for i, p := range m.buildProjects {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-30s %-20s %s",
-			truncate(p.Name, 40), truncate(p.Description, 30), p.LastBuild, p.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) eventBridgeView() string {
-	if len(m.ebRules) == 0 { return mutedStyle.Render("  No EventBridge rules found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-10s %-30s %-30s %s", "RULE", "STATE", "SCHEDULE", "DESCRIPTION", "REGION")) + "\n")
-	for i, r := range m.ebRules {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-10s %-30s %-30s %s",
-			truncate(r.Name, 40), stateColor(r.State),
-			truncate(r.Schedule, 30), truncate(r.Description, 30), r.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func (m model) wafView() string {
-	if len(m.wafACLs) == 0 { return mutedStyle.Render("  No WAF Web ACLs found") }
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-40s %-10s %-6s %s", "NAME", "SCOPE", "RULES", "REGION")) + "\n")
-	for i, a := range m.wafACLs {
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-40s %-10s %-6d %s",
-			truncate(a.Name, 40), a.Scope, a.Rules, a.Region)) + "\n")
-	}
-	return b.String()
-}
-
-func alarmStateColor(state string) string {
-	switch state {
-	case "OK":
-		return okStyle.Render(state)
-	case "ALARM":
-		return errorStyle.Render(state)
-	default:
-		return warnStyle.Render(state)
+	if m.cursor >= m.scroll+visible {
+		m.scroll = m.cursor - visible + 1
 	}
 }
 
-func friendlyErr(err error) string {
-	if err == nil {
-		return ""
+func scrollLines(lines []string, scroll, visible int) []string {
+	if scroll >= len(lines) {
+		return nil
 	}
-	s := err.Error()
-	if strings.Contains(s, "StatusCode: 403") || strings.Contains(s, "AccessDenied") || strings.Contains(s, "UnauthorizedOperation") {
-		return "⚠  This profile doesn't have permission to access this service.\n\n" +
-			"  Try switching to a profile with broader permissions (e.g. AdminRole).\n" +
-			"  Press esc to go back and choose a different service or profile."
+	end := scroll + visible
+	if end > len(lines) {
+		end = len(lines)
 	}
-	if strings.Contains(s, "StatusCode: 404") || strings.Contains(s, "NoSuchEntity") {
-		return "⚠  Resource not found — it may have been deleted or is in a different region."
-	}
-	if strings.Contains(s, "no such host") || strings.Contains(s, "connection refused") || strings.Contains(s, "dial tcp") {
-		return "⚠  Can't reach AWS — check your internet connection or VPN."
-	}
-	if strings.Contains(s, "ExpiredToken") || strings.Contains(s, "ExpiredTokenException") {
-		return "⚠  Your AWS credentials have expired.\n\n" +
-			"  Run: aws sso login --profile <name>  or  aws configure\n" +
-			"  Then restart awslens."
-	}
-	if strings.Contains(s, "NoCredentialProviders") || strings.Contains(s, "no EC2 IMDS role found") {
-		return "⚠  No AWS credentials found for this profile.\n\n" +
-			"  Run: aws configure --profile <name>"
-	}
-	return "⚠  " + s
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-1] + "…"
-}
-
-// ── CRUD actions ─────────────────────────────────────────────────────────────
-
-func (m model) crudHint() string {
-	switch m.current {
-	case viewS3:
-		return " • n new bucket • d delete bucket"
-	case viewLambda:
-		return " • d delete function"
-	case viewDynamo:
-		return " • d delete table"
-	case viewSQS:
-		return " • n new queue • p purge • d delete"
-	case viewSNS:
-		return " • n new topic • d delete"
-	case viewSSM:
-		return " • n new param • e edit value • d delete"
-	case viewSecrets:
-		return " • n new secret • e update value • d delete"
-	case viewECR:
-		return " • n new repo • d delete repo"
-	case viewCodeCommit:
-		return " • n new repo • d delete repo"
-	case viewEventBridge:
-		return " • t toggle enable/disable • d delete rule"
-	}
-	return ""
-}
-
-func writeCmd(fn func() error) tea.Cmd {
-	return func() tea.Msg {
-		if err := fn(); err != nil {
-			return writeErrMsg{err}
-		}
-		return writeOKMsg{}
-	}
-}
-
-func (m model) handleNew() (model, tea.Cmd) {
-	switch m.current {
-	case viewS3:
-		m.modal = modal{kind: modalInput, title: "Create S3 Bucket", body: "Bucket name:"}
-		m.modalOK = func() tea.Cmd {
-			name := m.modal.input
-			return writeCmd(func() error { return m.client.CreateBucket(context.Background(), name) })
-		}
-	case viewSQS:
-		m.modal = modal{kind: modalInput, title: "Create SQS Queue", body: "Queue name:"}
-		m.modalOK = func() tea.Cmd {
-			name := m.modal.input
-			return writeCmd(func() error { return m.client.CreateQueue(context.Background(), name) })
-		}
-	case viewSNS:
-		m.modal = modal{kind: modalInput, title: "Create SNS Topic", body: "Topic name:"}
-		m.modalOK = func() tea.Cmd {
-			name := m.modal.input
-			return writeCmd(func() error { return m.client.CreateTopic(context.Background(), name) })
-		}
-	case viewSSM:
-		m.modal = modal{kind: modalInput, title: "New SSM Parameter", body: "name=value (e.g. /app/key=secret):"}
-		m.modalOK = func() tea.Cmd {
-			input := m.modal.input
-			return writeCmd(func() error {
-				kv := splitKV(input)
-				if len(kv) != 2 {
-					return fmt.Errorf("use format: /name=value")
-				}
-				return m.client.PutSSMParam(context.Background(), kv[0], kv[1], false)
-			})
-		}
-	case viewSecrets:
-		m.modal = modal{kind: modalInput, title: "Create Secret", body: "name=value:"}
-		m.modalOK = func() tea.Cmd {
-			input := m.modal.input
-			return writeCmd(func() error {
-				kv := splitKV(input)
-				if len(kv) != 2 {
-					return fmt.Errorf("use format: name=value")
-				}
-				return m.client.CreateSecret(context.Background(), kv[0], kv[1])
-			})
-		}
-	case viewECR:
-		m.modal = modal{kind: modalInput, title: "Create ECR Repository", body: "Repository name:"}
-		m.modalOK = func() tea.Cmd {
-			name := m.modal.input
-			return writeCmd(func() error { return m.client.CreateECRRepo(context.Background(), name) })
-		}
-	case viewCodeCommit:
-		m.modal = modal{kind: modalInput, title: "Create CodeCommit Repo", body: "Repository name:"}
-		m.modalOK = func() tea.Cmd {
-			name := m.modal.input
-			return writeCmd(func() error { return m.client.CreateCodeRepo(context.Background(), name) })
-		}
-	}
-	return m, nil
-}
-
-func (m model) handleDelete() (model, tea.Cmd) {
-	switch m.current {
-	case viewS3:
-		if m.cursor >= len(m.buckets) {
-			return m, nil
-		}
-		name := m.buckets[m.cursor].Name
-		m.modal = modal{kind: modalConfirm, title: "Delete S3 Bucket", body: fmt.Sprintf("Delete bucket %q?\n(must be empty)", name)}
-		m.modalOK = func() tea.Cmd {
-			return writeCmd(func() error { return m.client.DeleteBucket(context.Background(), name) })
-		}
-	case viewLambda:
-		if m.cursor >= len(m.functions) {
-			return m, nil
-		}
-		fn := m.functions[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete Lambda Function", body: fmt.Sprintf("Delete function %q?", fn.Name)}
-		m.modalOK = func() tea.Cmd {
-			client := m.client.NewForRegion(fn.Region)
-			return writeCmd(func() error { return client.DeleteFunction(context.Background(), fn.Name) })
-		}
-	case viewDynamo:
-		if m.cursor >= len(m.tables) {
-			return m, nil
-		}
-		tbl := m.tables[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete DynamoDB Table", body: fmt.Sprintf("Delete table %q?\n⚠ This deletes ALL data!", tbl.Name)}
-		m.modalOK = func() tea.Cmd {
-			client := m.client.NewForRegion(tbl.Region)
-			return writeCmd(func() error { return client.DeleteTable(context.Background(), tbl.Name) })
-		}
-	case viewSQS:
-		if m.cursor >= len(m.queues) {
-			return m, nil
-		}
-		q := m.queues[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete SQS Queue", body: fmt.Sprintf("Delete queue %q?", q.Name)}
-		m.modalOK = func() tea.Cmd {
-			return writeCmd(func() error { return m.client.DeleteQueue(context.Background(), q.URL) })
-		}
-	case viewSNS:
-		if m.cursor >= len(m.topics) {
-			return m, nil
-		}
-		t := m.topics[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete SNS Topic", body: fmt.Sprintf("Delete topic %q?", t.Name)}
-		m.modalOK = func() tea.Cmd {
-			return writeCmd(func() error { return m.client.DeleteTopic(context.Background(), t.ARN) })
-		}
-	case viewSSM:
-		if m.cursor >= len(m.params) {
-			return m, nil
-		}
-		p := m.params[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete SSM Parameter", body: fmt.Sprintf("Delete parameter %q?", p.Name)}
-		m.modalOK = func() tea.Cmd {
-			return writeCmd(func() error { return m.client.DeleteSSMParam(context.Background(), p.Name) })
-		}
-	case viewSecrets:
-		if m.cursor >= len(m.secrets) {
-			return m, nil
-		}
-		s := m.secrets[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete Secret", body: fmt.Sprintf("Delete secret %q?\n(7-day recovery window)", s.Name)}
-		m.modalOK = func() tea.Cmd {
-			return writeCmd(func() error { return m.client.DeleteSecret(context.Background(), s.ARN) })
-		}
-	case viewECR:
-		if m.cursor >= len(m.repos) {
-			return m, nil
-		}
-		r := m.repos[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete ECR Repository", body: fmt.Sprintf("Delete repo %q?\n⚠ All images will be deleted!", r.Name)}
-		m.modalOK = func() tea.Cmd {
-			client := m.client.NewForRegion(r.Region)
-			return writeCmd(func() error { return client.DeleteECRRepo(context.Background(), r.Name) })
-		}
-	case viewCodeCommit:
-		if m.cursor >= len(m.codeRepos) {
-			return m, nil
-		}
-		r := m.codeRepos[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete CodeCommit Repo", body: fmt.Sprintf("Delete repo %q?", r.Name)}
-		m.modalOK = func() tea.Cmd {
-			client := m.client.NewForRegion(r.Region)
-			return writeCmd(func() error { return client.DeleteCodeRepo(context.Background(), r.Name) })
-		}
-	case viewEventBridge:
-		if m.cursor >= len(m.ebRules) {
-			return m, nil
-		}
-		r := m.ebRules[m.cursor]
-		m.modal = modal{kind: modalConfirm, title: "Delete EventBridge Rule", body: fmt.Sprintf("Delete rule %q?\n(targets will be removed first)", r.Name)}
-		m.modalOK = func() tea.Cmd {
-			client := m.client.NewForRegion(r.Region)
-			return writeCmd(func() error { return client.DeleteEBRule(context.Background(), r.Name) })
-		}
-	}
-	return m, nil
-}
-
-func (m model) handleEdit() (model, tea.Cmd) {
-	switch m.current {
-	case viewSSM:
-		if m.cursor >= len(m.params) {
-			return m, nil
-		}
-		p := m.params[m.cursor]
-		m.modal = modal{kind: modalInput, title: "Update SSM Parameter", body: fmt.Sprintf("New value for %q:", p.Name)}
-		m.modalOK = func() tea.Cmd {
-			val := m.modal.input
-			return writeCmd(func() error { return m.client.PutSSMParam(context.Background(), p.Name, val, true) })
-		}
-	case viewSecrets:
-		if m.cursor >= len(m.secrets) {
-			return m, nil
-		}
-		s := m.secrets[m.cursor]
-		m.modal = modal{kind: modalInput, title: "Update Secret Value", body: fmt.Sprintf("New value for %q:", s.Name)}
-		m.modalOK = func() tea.Cmd {
-			val := m.modal.input
-			return writeCmd(func() error { return m.client.UpdateSecret(context.Background(), s.ARN, val) })
-		}
-	}
-	return m, nil
-}
-
-func (m model) handlePurge() (model, tea.Cmd) {
-	if m.current != viewSQS || m.cursor >= len(m.queues) {
-		return m, nil
-	}
-	q := m.queues[m.cursor]
-	m.modal = modal{kind: modalConfirm, title: "Purge SQS Queue", body: fmt.Sprintf("Purge ALL messages from %q?", q.Name)}
-	m.modalOK = func() tea.Cmd {
-		return writeCmd(func() error { return m.client.PurgeQueue(context.Background(), q.URL) })
-	}
-	return m, nil
-}
-
-func (m model) handleToggle() (model, tea.Cmd) {
-	if m.current != viewEventBridge || m.cursor >= len(m.ebRules) {
-		return m, nil
-	}
-	r := m.ebRules[m.cursor]
-	action := "Disable"
-	if r.State == "DISABLED" {
-		action = "Enable"
-	}
-	m.modal = modal{kind: modalConfirm, title: action + " EventBridge Rule", body: fmt.Sprintf("%s rule %q?", action, r.Name)}
-	m.modalOK = func() tea.Cmd {
-		client := m.client.NewForRegion(r.Region)
-		return writeCmd(func() error {
-			if r.State == "DISABLED" {
-				return client.EnableEBRule(context.Background(), r.Name)
-			}
-			return client.DisableEBRule(context.Background(), r.Name)
-		})
-	}
-	return m, nil
-}
-
-func (m model) handleInsight() (model, tea.Cmd) {
-	summary := m.summarizeSelected()
-	if summary == "" {
-		return m, nil
-	}
-	tokens := len(summary)/4 + 50 // rough input estimate + system prompt
-	cost := float64(tokens)*0.00000025 + 200*0.00000125 // haiku input + output pricing
-	m.modal = modal{
-		kind:  modalConfirm,
-		title: "✨ AI Insight (Bedrock)",
-		body:  fmt.Sprintf("Analyze this resource using Claude 3 Haiku?\n\nEstimated cost: ~$%.5f\n(~%d input + 200 output tokens)", cost, tokens),
-	}
-	client := m.client
-	m.modalOK = func() tea.Cmd {
-		return func() tea.Msg {
-			text, err := client.GetInsight(context.Background(), summary)
-			if err != nil {
-				return errMsg{err}
-			}
-			return insightMsg{text}
-		}
-	}
-	return m, nil
-}
-
-func (m model) summarizeSelected() string {
-	switch m.current {
-	case viewEC2:
-		if m.cursor >= len(m.instances) { return "" }
-		i := m.instances[m.cursor]
-		return fmt.Sprintf("EC2: id=%s type=%s state=%s az=%s publicIP=%s launched=%s", i.ID, i.Type, i.State, i.AZ, i.PublicIP, i.LaunchTime)
-	case viewLambda:
-		if m.cursor >= len(m.functions) { return "" }
-		f := m.functions[m.cursor]
-		return fmt.Sprintf("Lambda: name=%s runtime=%s memory=%dMB timeout=%ds handler=%s modified=%s", f.Name, f.Runtime, f.Memory, f.Timeout, f.Handler, f.LastModified)
-	case viewS3:
-		if m.cursor >= len(m.buckets) { return "" }
-		b := m.buckets[m.cursor]
-		return fmt.Sprintf("S3: name=%s region=%s created=%s", b.Name, b.Region, b.CreationDate)
-	case viewRDS:
-		if m.cursor >= len(m.dbs) { return "" }
-		d := m.dbs[m.cursor]
-		return fmt.Sprintf("RDS: id=%s engine=%s class=%s status=%s multiAZ=%v", d.ID, d.Engine, d.Class, d.Status, d.MultiAZ)
-	case viewDynamo:
-		if m.cursor >= len(m.tables) { return "" }
-		t := m.tables[m.cursor]
-		return fmt.Sprintf("DynamoDB: table=%s status=%s items=%d size=%d billing=%s pk=%s", t.Name, t.Status, t.ItemCount, t.SizeBytes, t.BillingMode, t.PKName)
-	case viewECS:
-		if m.cursor >= len(m.clusters) { return "" }
-		c := m.clusters[m.cursor]
-		return fmt.Sprintf("ECS: cluster=%s status=%s running=%d pending=%d services=%d", c.Name, c.Status, c.RunningTasks, c.PendingTasks, c.ActiveServices)
-	case viewSQS:
-		if m.cursor >= len(m.queues) { return "" }
-		q := m.queues[m.cursor]
-		return fmt.Sprintf("SQS: name=%s messages=%s inflight=%s", q.Name, q.Messages, q.MessagesInFlight)
-	case viewSNS:
-		if m.cursor >= len(m.topics) { return "" }
-		t := m.topics[m.cursor]
-		return fmt.Sprintf("SNS: topic=%s arn=%s", t.Name, t.ARN)
-	case viewCFN:
-		if m.cursor >= len(m.stacks) { return "" }
-		s := m.stacks[m.cursor]
-		return fmt.Sprintf("CloudFormation: stack=%s status=%s drift=%s", s.Name, s.Status, s.Drift)
-	case viewALB:
-		if m.cursor >= len(m.lbs) { return "" }
-		l := m.lbs[m.cursor]
-		return fmt.Sprintf("LoadBalancer: name=%s type=%s scheme=%s state=%s", l.Name, l.Type, l.Scheme, l.State)
-	case viewCW:
-		if m.cursor >= len(m.alarms) { return "" }
-		a := m.alarms[m.cursor]
-		return fmt.Sprintf("CloudWatch: alarm=%s state=%s metric=%s namespace=%s threshold=%s", a.Name, a.State, a.Metric, a.Namespace, a.Threshold)
-	case viewSecrets:
-		if m.cursor >= len(m.secrets) { return "" }
-		s := m.secrets[m.cursor]
-		return fmt.Sprintf("Secret: name=%s lastChanged=%s lastAccessed=%s", s.Name, s.LastChanged, s.LastAccessed)
-	case viewSSM:
-		if m.cursor >= len(m.params) { return "" }
-		p := m.params[m.cursor]
-		return fmt.Sprintf("SSM: name=%s type=%s version=%d modified=%s", p.Name, p.Type, p.Version, p.LastModified)
-	case viewECR:
-		if m.cursor >= len(m.repos) { return "" }
-		r := m.repos[m.cursor]
-		return fmt.Sprintf("ECR: name=%s scanOnPush=%v created=%s", r.Name, r.ScanOnPush, r.Created)
-	case viewRoute53:
-		if m.cursor >= len(m.zones) { return "" }
-		z := m.zones[m.cursor]
-		return fmt.Sprintf("Route53: zone=%s private=%v records=%d", z.Name, z.Private, z.Records)
-	}
-	return ""
-}
-
-func splitKV(s string) []string {
-	for i, r := range s {
-		if r == '=' {
-			return []string{s[:i], s[i+1:]}
-		}
-	}
-	return []string{s}
+	return lines[scroll:end]
 }
 
 // ── entry ────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
@@ -34,6 +35,9 @@ type APIResource struct {
 }
 
 func (c *Client) ListRestAPIs(ctx context.Context) ([]RestAPI, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := apigateway.NewFromConfig(c.Config)
 	out, err := svc.GetRestApis(ctx, &apigateway.GetRestApisInput{})
 	if err != nil {
@@ -56,6 +60,9 @@ func (c *Client) ListRestAPIs(ctx context.Context) ([]RestAPI, error) {
 }
 
 func (c *Client) GetAPIResources(ctx context.Context, apiID string) ([]APIResource, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := apigateway.NewFromConfig(c.Config)
 	out, err := svc.GetResources(ctx, &apigateway.GetResourcesInput{
 		RestApiId: aws.String(apiID),
@@ -79,6 +86,9 @@ func (c *Client) GetAPIResources(ctx context.Context, apiID string) ([]APIResour
 }
 
 func (c *Client) GetAPIStages(ctx context.Context, apiID string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := apigateway.NewFromConfig(c.Config)
 	out, err := svc.GetStages(ctx, &apigateway.GetStagesInput{RestApiId: aws.String(apiID)})
 	if err != nil {
@@ -105,6 +115,9 @@ type DynamoTable struct {
 }
 
 func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := dynamodb.NewFromConfig(c.Config)
 	paginator := dynamodb.NewListTablesPaginator(svc, &dynamodb.ListTablesInput{})
 	var tables []DynamoTable
@@ -144,6 +157,9 @@ func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
 }
 
 func (c *Client) ScanDynamoTable(ctx context.Context, tableName string, limit int32) ([]map[string]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := dynamodb.NewFromConfig(c.Config)
 	out, err := svc.Scan(ctx, &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
@@ -195,6 +211,9 @@ type LBTargetGroup struct {
 }
 
 func (c *Client) ListLoadBalancers(ctx context.Context) ([]LoadBalancer, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := elasticloadbalancingv2.NewFromConfig(c.Config)
 	out, err := svc.DescribeLoadBalancers(ctx, &elasticloadbalancingv2.DescribeLoadBalancersInput{})
 	if err != nil {
@@ -219,6 +238,9 @@ func (c *Client) ListLoadBalancers(ctx context.Context) ([]LoadBalancer, error) 
 }
 
 func (c *Client) GetLBListeners(ctx context.Context, lbARN string) ([]LBListener, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := elasticloadbalancingv2.NewFromConfig(c.Config)
 	out, err := svc.DescribeListeners(ctx, &elasticloadbalancingv2.DescribeListenersInput{
 		LoadBalancerArn: aws.String(lbARN),
@@ -247,6 +269,9 @@ type Secret struct {
 }
 
 func (c *Client) ListSecrets(ctx context.Context) ([]Secret, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := secretsmanager.NewFromConfig(c.Config)
 	out, err := svc.ListSecrets(ctx, &secretsmanager.ListSecretsInput{})
 	if err != nil {
@@ -280,6 +305,9 @@ type SSMParam struct {
 }
 
 func (c *Client) ListSSMParams(ctx context.Context) ([]SSMParam, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
 	svc := ssm.NewFromConfig(c.Config)
 	out, err := svc.DescribeParameters(ctx, &ssm.DescribeParametersInput{})
 	if err != nil {
@@ -301,6 +329,8 @@ func (c *Client) ListSSMParams(ctx context.Context) ([]SSMParam, error) {
 }
 
 func (c *Client) GetSSMParamValue(ctx context.Context, name string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := ssm.NewFromConfig(c.Config)
 	out, err := svc.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           aws.String(name),
@@ -329,6 +359,8 @@ type DNSRecord struct {
 }
 
 func (c *Client) ListHostedZones(ctx context.Context) ([]HostedZone, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := route53.NewFromConfig(c.Config)
 	out, err := svc.ListHostedZones(ctx, &route53.ListHostedZonesInput{})
 	if err != nil {
@@ -347,6 +379,8 @@ func (c *Client) ListHostedZones(ctx context.Context) ([]HostedZone, error) {
 }
 
 func (c *Client) ListDNSRecords(ctx context.Context, zoneID string) ([]DNSRecord, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := route53.NewFromConfig(c.Config)
 	out, err := svc.ListResourceRecordSets(ctx, &route53.ListResourceRecordSetsInput{
 		HostedZoneId: aws.String(zoneID),
@@ -391,6 +425,8 @@ type ECRImage struct {
 }
 
 func (c *Client) ListECRRepos(ctx context.Context) ([]ECRRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := ecr.NewFromConfig(c.Config)
 	out, err := svc.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{})
 	if err != nil {
@@ -413,6 +449,8 @@ func (c *Client) ListECRRepos(ctx context.Context) ([]ECRRepo, error) {
 }
 
 func (c *Client) ListECRImages(ctx context.Context, repoName string) ([]ECRImage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := ecr.NewFromConfig(c.Config)
 	out, err := svc.DescribeImages(ctx, &ecr.DescribeImagesInput{
 		RepositoryName: aws.String(repoName),
@@ -457,6 +495,8 @@ type SFNExecution struct {
 }
 
 func (c *Client) ListStateMachines(ctx context.Context) ([]StateMachine, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := sfn.NewFromConfig(c.Config)
 	out, err := svc.ListStateMachines(ctx, &sfn.ListStateMachinesInput{})
 	if err != nil {
@@ -479,6 +519,8 @@ func (c *Client) ListStateMachines(ctx context.Context) ([]StateMachine, error) 
 }
 
 func (c *Client) ListSFNExecutions(ctx context.Context, smARN string) ([]SFNExecution, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := sfn.NewFromConfig(c.Config)
 	out, err := svc.ListExecutions(ctx, &sfn.ListExecutionsInput{
 		StateMachineArn: aws.String(smARN),
@@ -517,6 +559,8 @@ type CWAlarm struct {
 }
 
 func (c *Client) ListAlarms(ctx context.Context) ([]CWAlarm, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudwatch.NewFromConfig(c.Config)
 	out, err := svc.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{})
 	if err != nil {
@@ -541,6 +585,8 @@ func (c *Client) ListAlarms(ctx context.Context) ([]CWAlarm, error) {
 }
 
 func (c *Client) GetAlarmHistory(ctx context.Context, alarmName string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	svc := cloudwatch.NewFromConfig(c.Config)
 	out, err := svc.DescribeAlarmHistory(ctx, &cloudwatch.DescribeAlarmHistoryInput{
 		AlarmName:       aws.String(alarmName),
