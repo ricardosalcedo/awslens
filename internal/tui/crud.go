@@ -362,6 +362,58 @@ func (m model) summarizeSelected() string {
 		if m.cursor >= len(m.zones) { return "" }
 		z := m.zones[m.cursor]
 		return fmt.Sprintf("Route53: zone=%s private=%v records=%d", z.Name, z.Private, z.Records)
+	case viewAPIGW:
+		if m.cursor >= len(m.apis) { return "" }
+		a := m.apis[m.cursor]
+		return fmt.Sprintf("APIGateway: id=%s name=%s description=%s created=%s", a.ID, a.Name, a.Description, a.CreatedDate)
+	case viewSFN:
+		if m.cursor >= len(m.machines) { return "" }
+		s := m.machines[m.cursor]
+		return fmt.Sprintf("StepFunctions: name=%s type=%s created=%s", s.Name, s.Type, s.Created)
+	case viewElastiCache:
+		if m.cursor >= len(m.cacheClusters) { return "" }
+		c := m.cacheClusters[m.cursor]
+		return fmt.Sprintf("ElastiCache: id=%s engine=%s status=%s nodeType=%s nodes=%d", c.ID, c.Engine, c.Status, c.NodeType, c.Nodes)
+	case viewOpenSearch:
+		if m.cursor >= len(m.osDomains) { return "" }
+		d := m.osDomains[m.cursor]
+		return fmt.Sprintf("OpenSearch: domain=%s region=%s", d.Name, d.Region)
+	case viewMSK:
+		if m.cursor >= len(m.mskClusters) { return "" }
+		c := m.mskClusters[m.cursor]
+		return fmt.Sprintf("MSK: name=%s state=%s version=%s brokers=%d", c.Name, c.State, c.Version, c.Brokers)
+	case viewGlue:
+		if m.cursor >= len(m.glueDbs) { return "" }
+		g := m.glueDbs[m.cursor]
+		return fmt.Sprintf("Glue: database=%s description=%s", g.Name, g.Description)
+	case viewAthena:
+		if m.cursor >= len(m.athenaWGs) { return "" }
+		a := m.athenaWGs[m.cursor]
+		return fmt.Sprintf("Athena: workgroup=%s state=%s description=%s", a.Name, a.State, a.Description)
+	case viewCodeCommit:
+		if m.cursor >= len(m.codeRepos) { return "" }
+		r := m.codeRepos[m.cursor]
+		return fmt.Sprintf("CodeCommit: repo=%s description=%s modified=%s", r.Name, r.Description, r.LastModified)
+	case viewCodePipeline:
+		if m.cursor >= len(m.pipelines) { return "" }
+		p := m.pipelines[m.cursor]
+		return fmt.Sprintf("CodePipeline: name=%s version=%d updated=%s", p.Name, p.Version, p.Updated)
+	case viewCodeBuild:
+		if m.cursor >= len(m.buildProjects) { return "" }
+		b := m.buildProjects[m.cursor]
+		return fmt.Sprintf("CodeBuild: project=%s description=%s lastBuild=%s", b.Name, b.Description, b.LastBuild)
+	case viewEventBridge:
+		if m.cursor >= len(m.ebRules) { return "" }
+		r := m.ebRules[m.cursor]
+		return fmt.Sprintf("EventBridge: rule=%s state=%s schedule=%s description=%s", r.Name, r.State, r.Schedule, r.Description)
+	case viewWAF:
+		if m.cursor >= len(m.wafACLs) { return "" }
+		w := m.wafACLs[m.cursor]
+		return fmt.Sprintf("WAF: name=%s scope=%s rules=%d", w.Name, w.Scope, w.Rules)
+	case viewCosts:
+		if m.cursor >= len(m.costs) { return "" }
+		c := m.costs[m.cursor]
+		return fmt.Sprintf("Cost: service=%s amount=$%s", c.Service, c.Amount)
 	}
 	return ""
 }
