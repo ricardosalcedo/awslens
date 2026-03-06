@@ -1004,13 +1004,19 @@ func (m model) dashboardView() string {
 		allowed := m.access == nil || m.access[item.label]
 		prefix := "  "
 		label := fmt.Sprintf("%-16s", item.label)
-		desc := mutedStyle.Render(item.desc)
 
 		if !allowed {
 			b.WriteString("  " + mutedStyle.Render(fmt.Sprintf("%-16s", item.label)) +
 				" " + mutedStyle.Render("no access") + "\n")
 			continue
 		}
+
+		stat := m.serviceStat(item.v)
+		desc := mutedStyle.Render(item.desc)
+		if stat != "" {
+			desc = lipgloss.NewStyle().Foreground(green).Render(stat)
+		}
+
 		if i == m.cursor {
 			prefix = "▶ "
 			label = selectedRow.Render(label)
@@ -1019,6 +1025,110 @@ func (m model) dashboardView() string {
 	}
 	b.WriteString(helpStyle.Render("\n↑/↓ navigate • enter select • ctrl+c quit"))
 	return b.String()
+}
+
+func (m model) serviceStat(v view) string {
+	switch v {
+	case viewEC2:
+		if len(m.instances) == 0 { return "" }
+		running := 0
+		for _, i := range m.instances {
+			if i.State == "running" { running++ }
+		}
+		return fmt.Sprintf("%d instances (%d running)", len(m.instances), running)
+	case viewLambda:
+		if len(m.functions) == 0 { return "" }
+		return fmt.Sprintf("%d functions", len(m.functions))
+	case viewS3:
+		if len(m.buckets) == 0 { return "" }
+		return fmt.Sprintf("%d buckets", len(m.buckets))
+	case viewRDS:
+		if len(m.dbs) == 0 { return "" }
+		return fmt.Sprintf("%d databases", len(m.dbs))
+	case viewDynamo:
+		if len(m.tables) == 0 { return "" }
+		return fmt.Sprintf("%d tables", len(m.tables))
+	case viewAPIGW:
+		if len(m.apis) == 0 { return "" }
+		return fmt.Sprintf("%d APIs", len(m.apis))
+	case viewECS:
+		if len(m.clusters) == 0 { return "" }
+		tasks := int32(0)
+		for _, c := range m.clusters { tasks += c.RunningTasks }
+		return fmt.Sprintf("%d clusters (%d tasks)", len(m.clusters), tasks)
+	case viewECR:
+		if len(m.repos) == 0 { return "" }
+		return fmt.Sprintf("%d repos", len(m.repos))
+	case viewSFN:
+		if len(m.machines) == 0 { return "" }
+		return fmt.Sprintf("%d state machines", len(m.machines))
+	case viewALB:
+		if len(m.lbs) == 0 { return "" }
+		return fmt.Sprintf("%d load balancers", len(m.lbs))
+	case viewRoute53:
+		if len(m.zones) == 0 { return "" }
+		return fmt.Sprintf("%d zones", len(m.zones))
+	case viewSecrets:
+		if len(m.secrets) == 0 { return "" }
+		return fmt.Sprintf("%d secrets", len(m.secrets))
+	case viewSSM:
+		if len(m.params) == 0 { return "" }
+		return fmt.Sprintf("%d parameters", len(m.params))
+	case viewSQS:
+		if len(m.queues) == 0 { return "" }
+		return fmt.Sprintf("%d queues", len(m.queues))
+	case viewSNS:
+		if len(m.topics) == 0 { return "" }
+		return fmt.Sprintf("%d topics", len(m.topics))
+	case viewCW:
+		if len(m.alarms) == 0 { return "" }
+		alarming := 0
+		for _, a := range m.alarms {
+			if a.State == "ALARM" { alarming++ }
+		}
+		if alarming > 0 {
+			return fmt.Sprintf("%d alarms (%d firing)", len(m.alarms), alarming)
+		}
+		return fmt.Sprintf("%d alarms", len(m.alarms))
+	case viewCFN:
+		if len(m.stacks) == 0 { return "" }
+		return fmt.Sprintf("%d stacks", len(m.stacks))
+	case viewCosts:
+		if m.costTotal != "" {
+			return fmt.Sprintf("$%s this month", m.costTotal)
+		}
+	case viewElastiCache:
+		if len(m.cacheClusters) == 0 { return "" }
+		return fmt.Sprintf("%d clusters", len(m.cacheClusters))
+	case viewOpenSearch:
+		if len(m.osDomains) == 0 { return "" }
+		return fmt.Sprintf("%d domains", len(m.osDomains))
+	case viewMSK:
+		if len(m.mskClusters) == 0 { return "" }
+		return fmt.Sprintf("%d clusters", len(m.mskClusters))
+	case viewGlue:
+		if len(m.glueDbs) == 0 { return "" }
+		return fmt.Sprintf("%d databases", len(m.glueDbs))
+	case viewAthena:
+		if len(m.athenaWGs) == 0 { return "" }
+		return fmt.Sprintf("%d workgroups", len(m.athenaWGs))
+	case viewCodeCommit:
+		if len(m.codeRepos) == 0 { return "" }
+		return fmt.Sprintf("%d repos", len(m.codeRepos))
+	case viewCodePipeline:
+		if len(m.pipelines) == 0 { return "" }
+		return fmt.Sprintf("%d pipelines", len(m.pipelines))
+	case viewCodeBuild:
+		if len(m.buildProjects) == 0 { return "" }
+		return fmt.Sprintf("%d projects", len(m.buildProjects))
+	case viewEventBridge:
+		if len(m.ebRules) == 0 { return "" }
+		return fmt.Sprintf("%d rules", len(m.ebRules))
+	case viewWAF:
+		if len(m.wafACLs) == 0 { return "" }
+		return fmt.Sprintf("%d ACLs", len(m.wafACLs))
+	}
+	return ""
 }
 
 func (m model) serviceView() string {
