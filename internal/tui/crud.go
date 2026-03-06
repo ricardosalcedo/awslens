@@ -280,6 +280,11 @@ func (m model) handleInsight() (model, tea.Cmd) {
 	if summary == "" {
 		return m, nil
 	}
+	// return cached insight if available
+	if cached, ok := m.insightCache[summary]; ok {
+		m.modal = modal{kind: modalInsight, title: "✨ AI Insight (cached)", body: cached}
+		return m, nil
+	}
 	tokens := len(summary)/4 + 50 // rough input estimate + system prompt
 	cost := float64(tokens)*0.00000025 + 200*0.00000125 // haiku input + output pricing
 	m.modal = modal{
@@ -294,7 +299,7 @@ func (m model) handleInsight() (model, tea.Cmd) {
 			if err != nil {
 				return errMsg{err}
 			}
-			return insightMsg{text}
+			return insightCacheMsg{summary, text}
 		}
 	}
 	return m, nil

@@ -69,6 +69,7 @@ type codeBuildMsg struct{ projects []awsclient.BuildProject }
 type ebMsg struct{ rules []awsclient.EBRule }
 type wafMsg struct{ acls []awsclient.WAFWebACL }
 type insightMsg struct{ text string }
+type insightCacheMsg struct{ key, text string }
 
 // ── view enum ────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,9 @@ type model struct {
 
 	// detail
 	detail detailModel
+
+	// AI insight cache (keyed by resource summary)
+	insightCache map[string]string
 
 	// modal
 	modal   modal
@@ -412,6 +416,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.wafACLs = msg.acls
 	case insightMsg:
 		m.loading = false
+		m.modal = modal{kind: modalInsight, title: "✨ AI Insight", body: msg.text}
+	case insightCacheMsg:
+		m.loading = false
+		if m.insightCache == nil {
+			m.insightCache = map[string]string{}
+		}
+		m.insightCache[msg.key] = msg.text
 		m.modal = modal{kind: modalInsight, title: "✨ AI Insight", body: msg.text}
 	}
 
