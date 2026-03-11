@@ -1060,6 +1060,16 @@ func (m model) dashboardView() string {
 		return warnStyle.Render("  " + m.spinner.View() + "  Checking service access for this profile...")
 	}
 	var b strings.Builder
+
+	badge := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#000")).
+		Background(orange).
+		Padding(0, 1).
+		Render("AWS Lens")
+	tagline := mutedStyle.Render("  Browse, inspect, and manage your AWS resources from the terminal.")
+	b.WriteString(badge + tagline + "\n")
+	b.WriteString(mutedStyle.Render("  AI insights • security audit • cost analysis • export • multi-account") + "\n\n")
 	for i, item := range menu {
 		allowed := m.access == nil || m.access[item.label]
 		prefix := "  "
