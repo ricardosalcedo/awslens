@@ -18,6 +18,7 @@ type pickerModel struct {
 func (m pickerModel) Init() tea.Cmd { return nil }
 
 func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	maxIdx := len(m.profiles) // last index is "create new"
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -28,16 +29,22 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.profiles)-1 {
+			if m.cursor < maxIdx {
 				m.cursor++
 			}
 		case "enter", " ":
+			if m.cursor == len(m.profiles) {
+				// launch wizard
+				return m, func() tea.Msg { return createProfileMsg{} }
+			}
 			m.chosen = &m.profiles[m.cursor]
 			return m, tea.Quit
 		}
 	}
 	return m, nil
 }
+
+type createProfileMsg struct{}
 
 func (m pickerModel) View() string {
 	var b strings.Builder
@@ -65,6 +72,14 @@ func (m pickerModel) View() string {
 			name = selectedRow.Render(fmt.Sprintf("%-20s", p.Name))
 		}
 		b.WriteString(prefix + name + "  " + mutedStyle.Render(meta) + "\n")
+	}
+
+	// "create new" option
+	createLabel := "➕ Create new profile"
+	if m.cursor == len(m.profiles) {
+		b.WriteString("▶ " + selectedRow.Render(createLabel) + "\n")
+	} else {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(cyan).Render(createLabel) + "\n")
 	}
 
 	b.WriteString(helpStyle.Render("\n↑/↓ navigate • enter select • q quit"))
@@ -97,25 +112,37 @@ func profileMeta(p awsclient.Profile) string {
 
 // RunPicker shows the profile picker and returns the chosen profile name and region.
 func RunPicker() (profile, region string, err error) {
-	profiles := awsclient.LoadProfiles()
-	if len(profiles) == 0 {
-		return "", "", fmt.Errorf("no AWS profiles found\n\nRun: aws configure\nor add profiles to ~/.aws/config")
-	}
+	for {
+		profiles := awsclient.LoadProfiles()
 
-	// if only one profile, skip picker
-	if len(profiles) == 1 {
-		return profiles[0].Name, profiles[0].Region, nil
-	}
+		m := pickerModel{profiles: profiles}
+		result, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+		if err != nil {
+			return "", "", err
+		}
 
-	m := pickerModel{profiles: profiles}
-	result, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
-	if err != nil {
-		return "", "", err
-	}
+		pm := result.(pickerModel)
 
-	pm := result.(pickerModel)
-	if pm.chosen == nil {
-		return "", "", fmt.Errorf("no profile selected")
+		// check if user chose "create new"
+		if pm.cursor == len(pm.profiles) {
+			wiz := newWizard()
+			wizResult, err := tea.NewProgram(wiz, tea.WithAltScreen()).Run()
+			if err != nil {
+				return "", "", err
+			}
+			wm := wizResult.(wizardModel)
+			if wm.cancel {
+				continue // back to picker
+			}
+			if wm.saved {
+				continue // reload profiles and pick again
+			}
+			continue
+		}
+
+		if pm.chosen == nil {
+			return "", "", fmt.Errorf("no profile selected")
+		}
+		return pm.chosen.Name, pm.chosen.Region, nil
 	}
-	return pm.chosen.Name, pm.chosen.Region, nil
 }
