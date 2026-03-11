@@ -73,31 +73,53 @@ func (c *Client) GetFunctionLogs(ctx context.Context, functionName string, limit
 	svc := cloudwatchlogs.NewFromConfig(c.Config)
 	logGroup := fmt.Sprintf("/aws/lambda/%s", functionName)
 
-	// get latest log stream
+	// get latest 5 log streams
 	streams, err := svc.DescribeLogStreams(ctx, &cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName: aws.String(logGroup),
 		OrderBy:      cwltypes.OrderByLastEventTime,
 		Descending:   aws.Bool(true),
-		Limit:        aws.Int32(1),
+		Limit:        aws.Int32(5),
 	})
 	if err != nil || len(streams.LogStreams) == 0 {
 		return nil, err
 	}
 
-	events, err := svc.GetLogEvents(ctx, &cloudwatchlogs.GetLogEventsInput{
-		LogGroupName:  aws.String(logGroup),
-		LogStreamName: streams.LogStreams[0].LogStreamName,
-		Limit:         aws.Int32(limit),
-		StartFromHead: aws.Bool(false),
-	})
-	if err != nil {
-		return nil, err
+	type logEntry struct {
+		ts  int64
+		msg string
+	}
+	var all []logEntry
+	perStream := limit / int32(len(streams.LogStreams))
+	if perStream < 5 {
+		perStream = 5
+	}
+
+	for _, s := range streams.LogStreams {
+		events, err := svc.GetLogEvents(ctx, &cloudwatchlogs.GetLogEventsInput{
+			LogGroupName:  aws.String(logGroup),
+			LogStreamName: s.LogStreamName,
+			Limit:         aws.Int32(perStream),
+			StartFromHead: aws.Bool(false),
+		})
+		if err != nil {
+			continue
+		}
+		for _, e := range events.Events {
+			all = append(all, logEntry{aws.ToInt64(e.Timestamp), strings.TrimRight(aws.ToString(e.Message), "\n")})
+		}
+	}
+
+	sort.Slice(all, func(i, j int) bool { return all[i].ts < all[j].ts })
+
+	// cap to limit
+	if int32(len(all)) > limit {
+		all = all[len(all)-int(limit):]
 	}
 
 	var lines []string
-	for _, e := range events.Events {
-		ts := time.UnixMilli(aws.ToInt64(e.Timestamp)).Format("15:04:05")
-		lines = append(lines, fmt.Sprintf("%s  %s", ts, strings.TrimRight(aws.ToString(e.Message), "\n")))
+	for _, e := range all {
+		ts := time.UnixMilli(e.ts).Format("15:04:05")
+		lines = append(lines, fmt.Sprintf("%s  %s", ts, e.msg))
 	}
 	return lines, nil
 }
