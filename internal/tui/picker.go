@@ -42,14 +42,15 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m pickerModel) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("⬡ awslens") + "\n\n")
-	badge := lipgloss.NewStyle().
+	banner := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#000")).
 		Background(orange).
-		Padding(0, 1).
-		Render("AWS Lens")
-	b.WriteString(badge + mutedStyle.Render("  Browse, inspect, and manage your AWS resources from the terminal.") + "\n")
+		Padding(1, 3).
+		Render("⬡  AWS Lens")
+	b.WriteString(banner + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#fff")).Bold(true).
+		Render("  Browse, inspect, and manage your AWS resources from the terminal.") + "\n")
 	b.WriteString(mutedStyle.Render("  AI insights • security audit • cost analysis • export • multi-account") + "\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(cyan).Bold(true).Render("  Choose an AWS Profile") + "\n")
 	b.WriteString(mutedStyle.Render("  Profiles are loaded from ~/.aws/config and ~/.aws/credentials") + "\n\n")
