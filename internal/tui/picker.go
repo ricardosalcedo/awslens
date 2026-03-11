@@ -43,6 +43,14 @@ func (m pickerModel) View() string {
 	var b strings.Builder
 
 	b.WriteString(titleStyle.Render("⬡ awslens") + "\n\n")
+	badge := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#000")).
+		Background(orange).
+		Padding(0, 1).
+		Render("AWS Lens")
+	b.WriteString(badge + mutedStyle.Render("  Browse, inspect, and manage your AWS resources from the terminal.") + "\n")
+	b.WriteString(mutedStyle.Render("  AI insights • security audit • cost analysis • export • multi-account") + "\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(cyan).Bold(true).Render("  Choose an AWS Profile") + "\n")
 	b.WriteString(mutedStyle.Render("  Profiles are loaded from ~/.aws/config and ~/.aws/credentials") + "\n\n")
 
