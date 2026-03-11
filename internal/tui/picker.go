@@ -10,9 +10,10 @@ import (
 )
 
 type pickerModel struct {
-	profiles []awsclient.Profile
-	cursor   int
-	chosen   *awsclient.Profile
+	profiles  []awsclient.Profile
+	cursor    int
+	chosen    *awsclient.Profile
+	createNew bool
 }
 
 func (m pickerModel) Init() tea.Cmd { return nil }
@@ -34,8 +35,8 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", " ":
 			if m.cursor == len(m.profiles) {
-				// launch wizard
-				return m, func() tea.Msg { return createProfileMsg{} }
+				m.createNew = true
+				return m, tea.Quit
 			}
 			m.chosen = &m.profiles[m.cursor]
 			return m, tea.Quit
@@ -43,8 +44,6 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
-type createProfileMsg struct{}
 
 func (m pickerModel) View() string {
 	var b strings.Builder
@@ -123,8 +122,8 @@ func RunPicker() (profile, region string, err error) {
 
 		pm := result.(pickerModel)
 
-		// check if user chose "create new"
-		if pm.cursor == len(pm.profiles) {
+		// user chose "create new"
+		if pm.createNew {
 			wiz := newWizard()
 			wizResult, err := tea.NewProgram(wiz, tea.WithAltScreen()).Run()
 			if err != nil {
