@@ -135,7 +135,6 @@ func (m model) costsView() string {
 	}
 	sorted := awsclient.SortCostsByAmount(m.costs)
 
-	// find max for bar chart
 	var maxAmt float64
 	for _, c := range sorted {
 		var f float64
@@ -146,14 +145,23 @@ func (m model) costsView() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s  %s", "SERVICE", "COST (USD)", "")) + "\n")
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s %10s  %s  %s", "SERVICE", "THIS MTH", "LAST MTH", "", "TREND")) + "\n")
 	for i, c := range sorted {
-		var amt float64
+		var amt, prev float64
 		fmt.Sscanf(c.Amount, "%f", &amt)
-		bar := awsclient.CostBar(amt, maxAmt, 20)
+		fmt.Sscanf(c.PrevMonth, "%f", &prev)
+		bar := awsclient.CostBar(amt, maxAmt, 15)
 		barColored := lipgloss.NewStyle().Foreground(orange).Render(bar)
-		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-45s %10s  %s",
-			truncate(c.Service, 45), fmt.Sprintf("$%.4f", amt), barColored)) + "\n")
+		trend := ""
+		if prev > 0 && amt > prev*1.5 {
+			trend = errorStyle.Render("▲ spike")
+		} else if prev > 0 && amt > prev*1.1 {
+			trend = warnStyle.Render("▲ up")
+		} else if prev > 0 && amt < prev*0.5 {
+			trend = okStyle.Render("▼ down")
+		}
+		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-45s %10s %10s  %s  %s",
+			truncate(c.Service, 45), fmt.Sprintf("$%.2f", amt), fmt.Sprintf("$%.2f", prev), barColored, trend)) + "\n")
 	}
 	b.WriteString("\n" + lipgloss.NewStyle().Foreground(orange).Bold(true).
 		Render(fmt.Sprintf("  Total this month: $%s", m.costTotal)) + "\n")
@@ -460,3 +468,38 @@ func truncate(s string, n int) string {
 
 // ── CRUD actions ─────────────────────────────────────────────────────────────
 
+
+func (m model) securityView() string {
+	if len(m.secFindings) == 0 {
+		return okStyle.Render("  ✓ No security findings — looking good!")
+	}
+	var b strings.Builder
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-8s %-10s %-30s %s", "SEV", "SERVICE", "RESOURCE", "ISSUE")) + "\n")
+	for i, f := range m.secFindings {
+		sev := f.Severity
+		switch sev {
+		case "HIGH":
+			sev = errorStyle.Render("HIGH")
+		case "MEDIUM":
+			sev = warnStyle.Render("MEDIUM")
+		default:
+			sev = mutedStyle.Render("LOW")
+		}
+		b.WriteString(rowLine(m.cursor, i, fmt.Sprintf("%-8s %-10s %-30s %s",
+			sev, f.Service, truncate(f.Resource, 30), f.Issue)) + "\n")
+	}
+	high, med, low := 0, 0, 0
+	for _, f := range m.secFindings {
+		switch f.Severity {
+		case "HIGH":
+			high++
+		case "MEDIUM":
+			med++
+		default:
+			low++
+		}
+	}
+	b.WriteString(fmt.Sprintf("\n  %s %d high  %s %d medium  %s %d low\n",
+		errorStyle.Render("●"), high, warnStyle.Render("●"), med, mutedStyle.Render("●"), low))
+	return b.String()
+}

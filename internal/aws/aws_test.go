@@ -175,3 +175,52 @@ func TestParseDynamoJSON(t *testing.T) {
 		t.Error("empty input should return error")
 	}
 }
+
+func TestRenderSparkline(t *testing.T) {
+	// all zeros
+	got := renderSparkline([]float64{0, 0, 0, 0})
+	for _, r := range got {
+		if r != '▁' {
+			t.Errorf("all zeros should be ▁, got %c", r)
+		}
+	}
+	// ascending
+	got = renderSparkline([]float64{0, 5, 10})
+	if len([]rune(got)) != 3 {
+		t.Errorf("ascending length = %d", len([]rune(got)))
+	}
+	// single peak
+	got = renderSparkline([]float64{0, 0, 10, 0, 0})
+	runes := []rune(got)
+	if runes[2] != '█' {
+		t.Errorf("peak should be █, got %c", runes[2])
+	}
+}
+
+func TestExtractName(t *testing.T) {
+	tests := []struct{ input, want string }{
+		{"arn:aws:sqs:us-east-1:123:my-queue", "my-queue"},
+		{"arn:aws:iam::123:role/MyRole", "MyRole"},
+		{"simple-name", "simple-name"},
+	}
+	for _, tt := range tests {
+		got := extractName(tt.input)
+		if got != tt.want {
+			t.Errorf("extractName(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFormatDeps(t *testing.T) {
+	deps := []Dependency{
+		{From: "myFunc", To: "myTable", Relation: "reads/writes DynamoDB"},
+	}
+	got := FormatDeps(deps)
+	if !containsStr(got, "myFunc") || !containsStr(got, "myTable") {
+		t.Errorf("FormatDeps missing content: %q", got)
+	}
+	// empty
+	if FormatDeps(nil) == "" {
+		t.Error("nil deps should return 'No dependencies' message")
+	}
+}

@@ -52,6 +52,8 @@ github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.21 h1:V1p6rPBunVWfaXeBRlL
 github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.21/go.mod h1:TcDMbd5blzISp1pLuIYOfry8K5ArV6mbsMSOhUxttMk=
 github.com/aws/aws-sdk-go-v2/service/glue v1.137.2 h1:qGCcDn2ASnsWw20B6rPtV+e2sEbmHtbj/zQniK3z6ko=
 github.com/aws/aws-sdk-go-v2/service/glue v1.137.2/go.mod h1:sQhaXaqTtphSiXd2CXK80RBR4e7HZ0waa9geoIh0Vq8=
+github.com/aws/aws-sdk-go-v2/service/iam v1.53.5 h1:J8qtztl/SJ6lhk/Rke/F6PgpZ7V6UYq0my0Zc8hdLuc=
+github.com/aws/aws-sdk-go-v2/service/iam v1.53.5/go.mod h1:seDE466zJ4haVuAVcRk+yIH4DWb3s6cqt3Od8GxnGAA=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.6 h1:XAq62tBTJP/85lFD5oqOOe7YYgWxY9LvWq8plyDvDVg=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.6/go.mod h1:x0nZssQ3qZSnIcePWLvcoFisRXJzcTVvYpAAdYX8+GI=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.11 h1:BYf7XNsJMzl4mObARUBUib+j2tf0U//JAAtTnYqvqCw=

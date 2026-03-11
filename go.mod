@@ -24,6 +24,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.8
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.21
 	github.com/aws/aws-sdk-go-v2/service/glue v1.137.2
+	github.com/aws/aws-sdk-go-v2/service/iam v1.53.5
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.88.2
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.59.0

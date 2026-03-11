@@ -362,9 +362,10 @@ func (c *Client) ListStacks(ctx context.Context) ([]Stack, error) {
 // ── COSTS ────────────────────────────────────────────────────────────────────
 
 type CostEntry struct {
-	Service string
-	Amount  string
-	Unit    string
+	Service   string
+	Amount    string
+	Unit      string
+	PrevMonth string // last month's amount for comparison
 }
 
 func (c *Client) GetMonthlyCosts(ctx context.Context) ([]CostEntry, string, error) {
@@ -373,12 +374,15 @@ func (c *Client) GetMonthlyCosts(ctx context.Context) ([]CostEntry, string, erro
 	
 	svc := costexplorer.NewFromConfig(c.Config)
 	now := time.Now()
-	start := fmt.Sprintf("%d-%02d-01", now.Year(), now.Month())
 	end := now.Format("2006-01-02")
+
+	// also get last month for anomaly comparison
+	prevStart := now.AddDate(0, -1, 0)
+	prevStartStr := fmt.Sprintf("%d-%02d-01", prevStart.Year(), prevStart.Month())
 
 	out, err := svc.GetCostAndUsage(ctx, &costexplorer.GetCostAndUsageInput{
 		TimePeriod: &costypes.DateInterval{
-			Start: aws.String(start),
+			Start: aws.String(prevStartStr),
 			End:   aws.String(end),
 		},
 		Granularity: costypes.GranularityMonthly,
@@ -392,20 +396,29 @@ func (c *Client) GetMonthlyCosts(ctx context.Context) ([]CostEntry, string, erro
 		return nil, "", err
 	}
 
+	// collect per-service costs by period
+	prevCosts := map[string]string{}
 	var entries []CostEntry
 	total := 0.0
-	for _, result := range out.ResultsByTime {
+	for i, result := range out.ResultsByTime {
 		for _, group := range result.Groups {
 			amt := aws.ToString(group.Metrics["UnblendedCost"].Amount)
 			unit := aws.ToString(group.Metrics["UnblendedCost"].Unit)
-			entries = append(entries, CostEntry{
-				Service: group.Keys[0],
-				Amount:  amt,
-				Unit:    unit,
-			})
-			var f float64
-			fmt.Sscanf(amt, "%f", &f)
-			total += f
+			if i == 0 {
+				// last month
+				prevCosts[group.Keys[0]] = amt
+			} else {
+				// current month
+				entries = append(entries, CostEntry{
+					Service:   group.Keys[0],
+					Amount:    amt,
+					Unit:      unit,
+					PrevMonth: prevCosts[group.Keys[0]],
+				})
+				var f float64
+				fmt.Sscanf(amt, "%f", &f)
+				total += f
+			}
 		}
 	}
 	return entries, fmt.Sprintf("%.4f", total), nil

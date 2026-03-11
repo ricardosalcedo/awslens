@@ -14,7 +14,7 @@ func (m model) crudHint() string {
 	case viewS3:
 		return " • n new bucket • d delete bucket"
 	case viewLambda:
-		return " • d delete function"
+		return " • I invoke • d delete function"
 	case viewDynamo:
 		return " • d delete table"
 	case viewSQS:
@@ -274,6 +274,35 @@ func (m model) handleToggle() (model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+func (m model) handleInvoke() (model, tea.Cmd) {
+	if m.current != viewLambda || m.cursor >= len(m.functions) {
+		return m, nil
+	}
+	fn := m.functions[m.cursor]
+	m.modal = modal{kind: modalInput, title: "Invoke " + fn.Name, body: "JSON payload (or empty for {}):"}
+	client := m.client.NewForRegion(fn.Region)
+	name := fn.Name
+	m.modalOK = func() tea.Cmd {
+		payload := m.modal.input
+		if payload == "" {
+			payload = "{}"
+		}
+		return func() tea.Msg {
+			out, err := client.InvokeFunction(context.Background(), name, []byte(payload))
+			if err != nil {
+				return errMsg{err}
+			}
+			result := string(out)
+			if len(result) > 500 {
+				result = result[:500] + "\n... (truncated)"
+			}
+			return invokeResultMsg{result}
+		}
+	}
+	return m, nil
+}
+
 
 func (m model) handleInsight() (model, tea.Cmd) {
 	summary := m.summarizeSelected()

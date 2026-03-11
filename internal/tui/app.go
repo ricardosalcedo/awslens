@@ -68,8 +68,11 @@ type codePipelineMsg struct{ pipelines []awsclient.Pipeline }
 type codeBuildMsg struct{ projects []awsclient.BuildProject }
 type ebMsg struct{ rules []awsclient.EBRule }
 type wafMsg struct{ acls []awsclient.WAFWebACL }
+type securityMsg struct{ findings []awsclient.SecurityFinding }
+type switchProfileMsg struct{ profile, region string }
 type insightMsg struct{ text string }
 type insightCacheMsg struct{ key, text string }
+type invokeResultMsg struct{ output string }
 
 // ── view enum ────────────────────────────────────────────────────────────────
 
@@ -105,6 +108,7 @@ const (
 	viewCodeBuild
 	viewEventBridge
 	viewWAF
+	viewSecurity
 )
 
 type menuItem struct {
@@ -142,6 +146,7 @@ var menu = []menuItem{
 	{"CodeBuild", "Build projects", viewCodeBuild},
 	{"EventBridge", "Rules & targets", viewEventBridge},
 	{"WAF", "Web ACLs", viewWAF},
+	{"Security", "Audit findings", viewSecurity},
 }
 
 type accessMsg map[string]bool
@@ -193,12 +198,16 @@ type model struct {
 	buildProjects []awsclient.BuildProject
 	ebRules       []awsclient.EBRule
 	wafACLs       []awsclient.WAFWebACL
+	secFindings   []awsclient.SecurityFinding
 
 	// detail
 	detail detailModel
 
 	// AI insight cache (keyed by resource summary)
 	insightCache map[string]string
+
+	// favorites (service labels pinned to top)
+	favorites map[string]bool
 
 	// modal
 	modal   modal
@@ -307,6 +316,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", " ":
 			return m.enterService()
+		case "P":
+			profiles := awsclient.LoadProfiles()
+			var names []string
+			for _, p := range profiles {
+				names = append(names, p.Name)
+			}
+			m.modal = modal{kind: modalInput, title: "Switch Profile", body: fmt.Sprintf("Profile name (%s):", strings.Join(names, ", "))}
+			m.modalOK = func() tea.Cmd {
+				name := m.modal.input
+				var region string
+				for _, p := range profiles {
+					if p.Name == name { region = p.Region; break }
+				}
+				return func() tea.Msg { return switchProfileMsg{name, region} }
+			}
+		case "f":
+			if m.favorites == nil {
+				m.favorites = map[string]bool{}
+			}
+			label := menu[m.cursor].label
+			m.favorites[label] = !m.favorites[label]
+			if !m.favorites[label] {
+				delete(m.favorites, label)
+			}
 		}
 
 	case spinner.TickMsg:
@@ -414,6 +447,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wafMsg:
 		m.loading = false
 		m.wafACLs = msg.acls
+	case securityMsg:
+		m.loading = false
+		m.secFindings = msg.findings
+	case switchProfileMsg:
+		client, err := awsclient.New(msg.profile, msg.region)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		// reset all data
+		newM := model{client: client, probing: true, spinner: m.spinner, width: m.width, height: m.height}
+		return newM, tea.Batch(m.spinner.Tick, func() tea.Msg {
+			return accessMsg(client.ProbeAccess(context.Background()))
+		})
 	case insightMsg:
 		m.loading = false
 		m.modal = modal{kind: modalInsight, title: "✨ AI Insight", body: msg.text}
@@ -424,6 +471,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.insightCache[msg.key] = msg.text
 		m.modal = modal{kind: modalInsight, title: "✨ AI Insight", body: msg.text}
+	case invokeResultMsg:
+		m.loading = false
+		m.modal = modal{kind: modalInsight, title: "Lambda Response", body: msg.output}
 	}
 
 	return m, nil
@@ -562,6 +612,8 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return m.handleEdit()
 	case "i":
 		return m.handleInsight()
+	case "I":
+		return m.handleInvoke()
 	case "p":
 		return m.handlePurge()
 	case "t":
@@ -569,6 +621,8 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "/":
 		m.filtering = true
 		m.filter = ""
+	case "x":
+		return m.handleExport()
 	}
 	return m, nil
 }
@@ -631,6 +685,8 @@ func (m model) maxCursor() int {
 		return max0(len(m.ebRules) - 1)
 	case viewWAF:
 		return max0(len(m.wafACLs) - 1)
+	case viewSecurity:
+		return max0(len(m.secFindings) - 1)
 	}
 	return 0
 }
@@ -865,6 +921,10 @@ func (m model) reloadService() (model, tea.Cmd) {
 		return m, func() tea.Msg {
 			return wafMsg{awsclient.AllRegionsWAFWebACLs(context.Background(), client)}
 		}
+	case viewSecurity:
+		return m, func() tea.Msg {
+			return securityMsg{client.RunSecurityAudit(context.Background())}
+		}
 	}
 	return m, nil
 }
@@ -920,7 +980,7 @@ func (m model) View() string {
 		bodyLines = scrollLines(bodyLines, m.scroll, visible)
 		body = strings.Join(bodyLines, "\n")
 	}
-	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • / filter • r refresh • esc/q back" + m.crudHint())
+	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • / filter • x export • r refresh • esc/q back" + m.crudHint())
 	if m.filtering {
 		help = warnStyle.Render("\n  filter: " + m.filter + "█  (enter confirm • esc clear)")
 	} else if m.filter != "" {
@@ -1003,10 +1063,14 @@ func (m model) dashboardView() string {
 	for i, item := range menu {
 		allowed := m.access == nil || m.access[item.label]
 		prefix := "  "
+		star := " "
+		if m.favorites[item.label] {
+			star = lipgloss.NewStyle().Foreground(yellow).Render("★")
+		}
 		label := fmt.Sprintf("%-16s", item.label)
 
 		if !allowed {
-			b.WriteString("  " + mutedStyle.Render(fmt.Sprintf("%-16s", item.label)) +
+			b.WriteString("  " + star + mutedStyle.Render(fmt.Sprintf("%-16s", item.label)) +
 				" " + mutedStyle.Render("no access") + "\n")
 			continue
 		}
@@ -1021,9 +1085,9 @@ func (m model) dashboardView() string {
 			prefix = "▶ "
 			label = selectedRow.Render(label)
 		}
-		b.WriteString(prefix + label + " " + desc + "\n")
+		b.WriteString(prefix + star + label + " " + desc + "\n")
 	}
-	b.WriteString(helpStyle.Render("\n↑/↓ navigate • enter select • ctrl+c quit"))
+	b.WriteString(helpStyle.Render("\n↑/↓ navigate • enter select • f favorite • P switch profile • ctrl+c quit"))
 	return b.String()
 }
 
@@ -1127,6 +1191,14 @@ func (m model) serviceStat(v view) string {
 	case viewWAF:
 		if len(m.wafACLs) == 0 { return "" }
 		return fmt.Sprintf("%d ACLs", len(m.wafACLs))
+	case viewSecurity:
+		if len(m.secFindings) == 0 { return "" }
+		high := 0
+		for _, f := range m.secFindings { if f.Severity == "HIGH" { high++ } }
+		if high > 0 {
+			return fmt.Sprintf("%d findings (%d high)", len(m.secFindings), high)
+		}
+		return fmt.Sprintf("%d findings", len(m.secFindings))
 	}
 	return ""
 }
@@ -1195,6 +1267,8 @@ func (m model) serviceView() string {
 		return m.eventBridgeView()
 	case viewWAF:
 		return m.wafView()
+	case viewSecurity:
+		return m.securityView()
 	}
 	return ""
 }
