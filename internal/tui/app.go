@@ -205,7 +205,8 @@ type model struct {
 	detail detailModel
 
 	// AI insight cache (keyed by resource summary)
-	insightCache map[string]string
+	insightCache   map[string]string
+	insightLoading bool
 
 	// favorites (service labels pinned to top)
 	favorites map[string]bool
@@ -260,9 +261,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "y":
 				if m.modal.kind == modalConfirm && m.modalOK != nil {
 					fn := m.modalOK
+					showLoading := m.insightLoading
 					m.modal.reset()
 					m.modalOK = nil
-					return m, fn()
+					if showLoading {
+						m.modal = modal{kind: modalLoading, title: "✨ AI Insight", body: "  Fetching metrics and analyzing with AI... "}
+					}
+					return m, tea.Batch(fn(), m.spinner.Tick)
 				}
 			case "enter":
 				if m.modal.kind == modalInput && m.modal.input != "" && m.modalOK != nil {
@@ -365,6 +370,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case errMsg:
 		m.loading = false
+		if m.insightLoading {
+			m.insightLoading = false
+			m.modal = modal{kind: modalInsight, title: "✨ AI Insight — Error", body: msg.err.Error()}
+			return m, nil
+		}
 		m.err = msg.err
 	case ec2Msg:
 		m.loading = false
@@ -470,6 +480,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.modal = modal{kind: modalInsight, title: "✨ AI Insight", body: msg.text}
 	case insightCacheMsg:
 		m.loading = false
+		m.insightLoading = false
 		if m.insightCache == nil {
 			m.insightCache = map[string]string{}
 		}
@@ -995,7 +1006,7 @@ func (m model) View() string {
 	if m.modal.active() {
 		lines := strings.Split(page, "\n")
 		h := len(lines)
-		overlay := m.modal.view(m.width)
+		overlay := m.modal.view(m.width, m.spinner.View())
 		olines := strings.Split(overlay, "\n")
 		start := (h - len(olines)) / 2
 		if start < 0 {

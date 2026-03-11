@@ -15,6 +15,7 @@ const (
 	modalConfirm
 	modalInput
 	modalInsight
+	modalLoading
 )
 
 type modal struct {
@@ -38,19 +39,25 @@ var (
 	modalHelp  = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 )
 
-func (m modal) view(width int) string {
+func (m modal) view(width int, extra ...string) string {
 	if !m.active() {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString(modalTitle.Render(m.title) + "\n\n")
-	b.WriteString(m.body + "\n")
+	b.WriteString(m.body)
+	if m.kind == modalLoading && len(extra) > 0 {
+		b.WriteString(extra[0])
+	}
+	b.WriteString("\n")
 	switch m.kind {
 	case modalInput:
 		b.WriteString("\n> " + m.input + "█\n")
 		b.WriteString("\n" + modalHelp.Render("enter submit • esc cancel"))
 	case modalInsight:
 		b.WriteString("\n" + modalHelp.Render("esc close"))
+	case modalLoading:
+		// no help, just the spinner in body
 	default:
 		b.WriteString("\n" + modalHelp.Render("y confirm • esc cancel"))
 	}

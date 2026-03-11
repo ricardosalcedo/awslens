@@ -321,6 +321,7 @@ func (m model) handleInsight() (model, tea.Cmd) {
 	}
 	client := m.client
 	enrichFn := m.enrichFunc()
+	m.insightLoading = true
 	m.modalOK = func() tea.Cmd {
 		return func() tea.Msg {
 			ctx := context.Background()
