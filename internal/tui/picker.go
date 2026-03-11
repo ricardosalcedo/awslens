@@ -61,7 +61,19 @@ func (m pickerModel) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(cyan).Bold(true).Render("  Choose an AWS Profile") + "\n")
 	b.WriteString(mutedStyle.Render("  Profiles are loaded from ~/.aws/config and ~/.aws/credentials") + "\n\n")
 
+	lastRegion := ""
 	for i, p := range m.profiles {
+		reg := p.Region
+		if reg == "" {
+			reg = "no region"
+		}
+		if reg != lastRegion {
+			if lastRegion != "" {
+				b.WriteString("\n")
+			}
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(orange).Bold(true).Render("── "+reg+" ──") + "\n")
+			lastRegion = reg
+		}
 		prefix := "  "
 		name := fmt.Sprintf("%-20s", p.Name)
 		meta := profileMeta(p)

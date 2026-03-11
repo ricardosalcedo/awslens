@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -27,15 +28,19 @@ func LoadProfiles() []Profile {
 	parseConfig(filepath.Join(os.Getenv("HOME"), ".aws", "credentials"), profiles, false)
 
 	var result []Profile
-	// default first
-	if p, ok := profiles["default"]; ok {
+	for _, p := range profiles {
 		result = append(result, *p)
 	}
-	for name, p := range profiles {
-		if name != "default" {
-			result = append(result, *p)
-		}
-	}
+	sort.Slice(result, func(i, j int) bool {
+		// "default" always first
+		if result[i].Name == "default" { return true }
+		if result[j].Name == "default" { return false }
+		ri, rj := result[i].Region, result[j].Region
+		if ri == "" { ri = "zzz" }
+		if rj == "" { rj = "zzz" }
+		if ri != rj { return ri < rj }
+		return result[i].Name < result[j].Name
+	})
 	return result
 }
 
