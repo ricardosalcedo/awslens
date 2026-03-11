@@ -501,16 +501,16 @@ func (m model) handleDetailKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		if m.detail.tab > 0 {
 			m.detail.tab--
 		}
-	case "right", "l":
-		if m.detail.active == detailLambda {
-			if m.detail.tab < 2 {
-				m.detail.tab++
-			}
+	case "right":
+		if m.detail.active == detailLambda && m.detail.tab < 2 {
+			m.detail.tab++
+		}
+		if m.detail.active == detailCFNResources && m.detail.tab < 2 {
+			m.detail.tab++
 		}
 	case "s":
 		m.detail.masked = !m.detail.masked
-	// Lambda: press L to view logs
-	case "L":
+	case "l", "L":
 		if m.detail.active == detailLambda && m.detail.lambdaDetail != nil {
 			m.detail.active = detailLambdaLogs
 			m.loading = true
