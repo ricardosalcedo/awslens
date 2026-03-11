@@ -28,12 +28,19 @@ type bedrockResponse struct {
 }
 
 func (c *Client) GetInsight(ctx context.Context, resourceSummary string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	body, _ := json.Marshal(bedrockRequest{
 		AnthropicVersion: "bedrock-2023-05-31",
-		MaxTokens:        200,
-		System:           "You are a concise AWS advisor. Given a resource summary, provide 2-3 brief actionable insights about cost, security, or performance. No markdown. Keep it under 150 words.",
+		MaxTokens:        400,
+		System: `You are an expert AWS operations advisor. Given a resource config and its real operational data (metrics, errors, dependencies), provide a structured analysis:
+
+WHAT IT DOES: One sentence describing the resource's purpose based on its name, config, and connections.
+HEALTH: Current health based on metrics and errors. Flag anything abnormal.
+COST: Is this resource right-sized? Any waste? Suggest savings if applicable.
+ACTION ITEMS: 1-3 specific, actionable recommendations ranked by impact.
+
+Be direct. Use the actual numbers from the metrics. No generic advice — only insights specific to this resource's data. Under 200 words.`,
 		Messages: []bedrockMessage{
 			{Role: "user", Content: resourceSummary},
 		},

@@ -314,17 +314,23 @@ func (m model) handleInsight() (model, tea.Cmd) {
 		m.modal = modal{kind: modalInsight, title: "✨ AI Insight (cached)", body: cached}
 		return m, nil
 	}
-	tokens := len(summary)/4 + 50 // rough input estimate + system prompt
-	cost := float64(tokens)*0.00000025 + 200*0.00000125 // haiku input + output pricing
 	m.modal = modal{
 		kind:  modalConfirm,
 		title: "✨ AI Insight (Bedrock)",
-		body:  fmt.Sprintf("Analyze this resource using Claude 3 Haiku?\n\nEstimated cost: ~$%.5f\n(~%d input + 200 output tokens)", cost, tokens),
+		body:  "Analyze this resource with Claude 3 Haiku?\n\nThis will fetch 7-day metrics, recent errors, and\ndependencies, then send to Bedrock for analysis.\n\nEstimated cost: ~$0.003",
 	}
 	client := m.client
+	enrichFn := m.enrichFunc()
 	m.modalOK = func() tea.Cmd {
 		return func() tea.Msg {
-			text, err := client.GetInsight(context.Background(), summary)
+			ctx := context.Background()
+			enriched := summary
+			if enrichFn != nil {
+				if extra := enrichFn(ctx, client); extra != "" {
+					enriched += "\n" + extra
+				}
+			}
+			text, err := client.GetInsight(ctx, enriched)
 			if err != nil {
 				return errMsg{err}
 			}
@@ -332,6 +338,49 @@ func (m model) handleInsight() (model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// enrichFunc returns a function that gathers operational context for the selected resource.
+func (m model) enrichFunc() func(context.Context, *awsclient.Client) string {
+	switch m.current {
+	case viewEC2:
+		if m.cursor >= len(m.instances) { return nil }
+		i := m.instances[m.cursor]
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.NewForRegion(i.Region).EnrichEC2(ctx, i.ID).String()
+		}
+	case viewLambda:
+		if m.cursor >= len(m.functions) { return nil }
+		f := m.functions[m.cursor]
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.NewForRegion(f.Region).EnrichLambda(ctx, f.Name).String()
+		}
+	case viewRDS:
+		if m.cursor >= len(m.dbs) { return nil }
+		id := m.dbs[m.cursor].ID
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.EnrichRDS(ctx, id).String()
+		}
+	case viewSQS:
+		if m.cursor >= len(m.queues) { return nil }
+		name := m.queues[m.cursor].Name
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.EnrichSQS(ctx, name).String()
+		}
+	case viewDynamo:
+		if m.cursor >= len(m.tables) { return nil }
+		t := m.tables[m.cursor]
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.NewForRegion(t.Region).EnrichDynamo(ctx, t.Name).String()
+		}
+	case viewALB:
+		if m.cursor >= len(m.lbs) { return nil }
+		lb := m.lbs[m.cursor]
+		return func(ctx context.Context, c *awsclient.Client) string {
+			return c.EnrichALB(ctx, lb.Name).String()
+		}
+	}
+	return nil
 }
 
 func (m model) summarizeSelected() string {
