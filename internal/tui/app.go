@@ -167,6 +167,7 @@ type model struct {
 	err     error
 	probing bool   // true while running access probe
 	access  map[string]bool // nil = not probed yet
+	backToPicker bool
 
 	// list data
 	instances []awsclient.Instance
@@ -299,6 +300,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// dashboard keys
 		switch msg.String() {
 		case "ctrl+c":
+			return m, tea.Quit
+		case "q", "esc":
+			m.backToPicker = true
 			return m, tea.Quit
 		case "up", "k":
 			for m.cursor > 0 {
@@ -1320,6 +1324,9 @@ func scrollLines(lines []string, scroll, visible int) []string {
 
 // ── entry ────────────────────────────────────────────────────────────────────
 
+// ErrBackToPicker signals the caller to return to the profile picker.
+var ErrBackToPicker = fmt.Errorf("back to picker")
+
 func Start(profile, region string) error {
 	client, err := awsclient.New(profile, region)
 	if err != nil {
@@ -1328,6 +1335,12 @@ func Start(profile, region string) error {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(orange)
-	_, err = tea.NewProgram(model{client: client, probing: true, spinner: s}, tea.WithAltScreen()).Run()
-	return err
+	result, err := tea.NewProgram(model{client: client, probing: true, spinner: s}, tea.WithAltScreen()).Run()
+	if err != nil {
+		return err
+	}
+	if m, ok := result.(model); ok && m.backToPicker {
+		return ErrBackToPicker
+	}
+	return nil
 }

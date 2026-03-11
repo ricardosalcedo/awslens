@@ -18,21 +18,26 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, r := profile, region
 
-		// if no profile flag, show interactive picker
-		if p == "" {
-			var err error
-			p, r, err = tui.RunPicker()
-			if err != nil {
-				return err
+		for {
+			if p == "" {
+				var err error
+				p, r, err = tui.RunPicker()
+				if err != nil {
+					return err
+				}
 			}
-		}
 
-		// region flag overrides whatever the profile has
-		if region != "" {
-			r = region
-		}
+			if region != "" {
+				r = region
+			}
 
-		return tui.Start(p, r)
+			err := tui.Start(p, r)
+			if err == tui.ErrBackToPicker {
+				p, r = "", ""
+				continue
+			}
+			return err
+		}
 	},
 }
 
