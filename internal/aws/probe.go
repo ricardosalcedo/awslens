@@ -118,7 +118,7 @@ func (c *Client) ProbeAccess(ctx context.Context) map[string]bool {
 			return err
 		},
 		"Costs": func() error {
-			_, _, err := c.GetMonthlyCosts(ctx)
+			_, _, err := c.GetMonthlyCosts(ctx, 0)
 			return err
 		},
 		"ElastiCache": func() error {

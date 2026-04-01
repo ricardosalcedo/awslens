@@ -178,8 +178,9 @@ type model struct {
 	queues    []awsclient.Queue
 	topics    []awsclient.Topic
 	stacks    []awsclient.Stack
-	costs     []awsclient.CostEntry
-	costTotal string
+	costs      []awsclient.CostEntry
+	costTotal  string
+	costPeriod int // 0 = current month, 1 = last month, etc.
 	tables    []awsclient.DynamoTable
 	apis      []awsclient.RestAPI
 	repos     []awsclient.ECRRepo
@@ -636,6 +637,20 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	case "/":
 		m.filtering = true
 		m.filter = ""
+	case "[":
+		if m.current == viewCosts {
+			m.costPeriod++
+			m.cursor = 0
+			m.scroll = 0
+			return m.reloadService()
+		}
+	case "]":
+		if m.current == viewCosts && m.costPeriod > 0 {
+			m.costPeriod--
+			m.cursor = 0
+			m.scroll = 0
+			return m.reloadService()
+		}
 	case "x":
 		return m.handleExport()
 	}
@@ -846,7 +861,7 @@ func (m model) reloadService() (model, tea.Cmd) {
 		}
 	case viewCosts:
 		return m, func() tea.Msg {
-			data, total, err := client.GetMonthlyCosts(context.Background())
+			data, total, err := client.GetMonthlyCosts(context.Background(), m.costPeriod)
 			if err != nil { return errMsg{err} }
 			return costsMsg{data, total}
 		}
@@ -995,7 +1010,11 @@ func (m model) View() string {
 		bodyLines = scrollLines(bodyLines, m.scroll, visible)
 		body = strings.Join(bodyLines, "\n")
 	}
-	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • / filter • x export • r refresh • esc/q back" + m.crudHint())
+	helpExtra := ""
+	if m.current == viewCosts {
+		helpExtra = " • [ older • ] newer"
+	}
+	help := helpStyle.Render("\n↑/↓ navigate • enter drill-down • i AI insight • / filter • x export • r refresh • esc/q back" + helpExtra + m.crudHint())
 	if m.filtering {
 		help = warnStyle.Render("\n  filter: " + m.filter + "█  (enter confirm • esc clear)")
 	} else if m.filter != "" {

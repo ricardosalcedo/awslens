@@ -368,16 +368,25 @@ type CostEntry struct {
 	PrevMonth string // last month's amount for comparison
 }
 
-func (c *Client) GetMonthlyCosts(ctx context.Context) ([]CostEntry, string, error) {
+func (c *Client) GetMonthlyCosts(ctx context.Context, monthsBack int) ([]CostEntry, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	
 	svc := costexplorer.NewFromConfig(c.Config)
 	now := time.Now()
-	end := now.Format("2006-01-02")
 
-	// also get last month for anomaly comparison
-	prevStart := now.AddDate(0, -1, 0)
+	// Shift the window back by monthsBack months
+	ref := now.AddDate(0, -monthsBack, 0)
+	var end string
+	if monthsBack == 0 {
+		end = now.Format("2006-01-02")
+	} else {
+		next := ref.AddDate(0, 1, 0)
+		end = fmt.Sprintf("%d-%02d-01", next.Year(), next.Month())
+	}
+
+	// also get previous month for anomaly comparison
+	prevStart := ref.AddDate(0, -1, 0)
 	prevStartStr := fmt.Sprintf("%d-%02d-01", prevStart.Year(), prevStart.Month())
 
 	out, err := svc.GetCostAndUsage(ctx, &costexplorer.GetCostAndUsageInput{

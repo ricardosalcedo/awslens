@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	awsclient "github.com/awslens/awslens/internal/aws"
@@ -135,6 +136,11 @@ func (m model) costsView() string {
 	}
 	sorted := awsclient.SortCostsByAmount(m.costs)
 
+	// period label
+	ref := time.Now().AddDate(0, -m.costPeriod, 0)
+	periodLabel := ref.Format("January 2006")
+	prevLabel := ref.AddDate(0, -1, 0).Format("Jan 2006")
+
 	var maxAmt float64
 	for _, c := range sorted {
 		var f float64
@@ -145,7 +151,10 @@ func (m model) costsView() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s %10s  %s  %s", "SERVICE", "THIS MTH", "LAST MTH", "", "TREND")) + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(orange).Bold(true).
+		Render(fmt.Sprintf("  📅 %s", periodLabel)) +
+		helpStyle.Render("  [ older • ] newer") + "\n\n")
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s %10s  %s  %s", "SERVICE", periodLabel[:3], prevLabel, "", "TREND")) + "\n")
 	for i, c := range sorted {
 		var amt, prev float64
 		fmt.Sscanf(c.Amount, "%f", &amt)
@@ -164,7 +173,7 @@ func (m model) costsView() string {
 			truncate(c.Service, 45), fmt.Sprintf("$%.2f", amt), fmt.Sprintf("$%.2f", prev), barColored, trend)) + "\n")
 	}
 	b.WriteString("\n" + lipgloss.NewStyle().Foreground(orange).Bold(true).
-		Render(fmt.Sprintf("  Total this month: $%s", m.costTotal)) + "\n")
+		Render(fmt.Sprintf("  Total for %s: $%s", periodLabel, m.costTotal)) + "\n")
 	return b.String()
 }
 

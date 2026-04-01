@@ -8,8 +8,7 @@ A modern TUI for AWS — see everything, navigate fast.
 
 Built with Go, [Bubble Tea](https://github.com/charmbracelet/bubbletea), and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 
-<!-- TODO: Add a demo GIF here -->
-<!-- ![awslens demo](docs/demo.gif) -->
+![awslens demo](docs/demo.gif)
 
 ## Features
 
@@ -76,6 +75,7 @@ awslens --region us-west-2     # override region
 | `n` | New resource |
 | `d` | Delete resource |
 | `e` | Edit resource |
+| `[` / `]` | Previous / next month (Costs view) |
 
 ## Architecture
 
