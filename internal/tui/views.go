@@ -143,8 +143,7 @@ func (m model) costsView() string {
 
 	var maxAmt float64
 	for _, c := range sorted {
-		var f float64
-		fmt.Sscanf(c.Amount, "%f", &f)
+		f := awsclient.ParseCostAmount(c.Amount)
 		if f > maxAmt {
 			maxAmt = f
 		}
@@ -154,11 +153,10 @@ func (m model) costsView() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(orange).Bold(true).
 		Render(fmt.Sprintf("  📅 %s", periodLabel)) +
 		helpStyle.Render("  [ older • ] newer") + "\n\n")
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s %10s  %s  %s", "SERVICE", periodLabel[:3], prevLabel, "", "TREND")) + "\n")
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-45s %10s %10s  %s  %s", "SERVICE", ref.Format("Jan"), prevLabel, "", "TREND")) + "\n")
 	for i, c := range sorted {
-		var amt, prev float64
-		fmt.Sscanf(c.Amount, "%f", &amt)
-		fmt.Sscanf(c.PrevMonth, "%f", &prev)
+		amt := awsclient.ParseCostAmount(c.Amount)
+		prev := awsclient.ParseCostAmount(c.PrevMonth)
 		bar := awsclient.CostBar(amt, maxAmt, 15)
 		barColored := lipgloss.NewStyle().Foreground(orange).Render(bar)
 		trend := ""

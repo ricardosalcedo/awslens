@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -301,14 +302,16 @@ func (c *Client) GetTopicSubscriptions(ctx context.Context, topicARN string) ([]
 
 // ── Costs detail ──────────────────────────────────────────────────────────────
 
+func ParseCostAmount(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
+}
+
 func SortCostsByAmount(entries []CostEntry) []CostEntry {
 	sorted := make([]CostEntry, len(entries))
 	copy(sorted, entries)
 	sort.Slice(sorted, func(i, j int) bool {
-		var a, b float64
-		fmt.Sscanf(sorted[i].Amount, "%f", &a)
-		fmt.Sscanf(sorted[j].Amount, "%f", &b)
-		return a > b
+		return ParseCostAmount(sorted[i].Amount) > ParseCostAmount(sorted[j].Amount)
 	})
 	return sorted
 }

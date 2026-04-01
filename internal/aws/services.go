@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -425,7 +426,9 @@ func (c *Client) GetMonthlyCosts(ctx context.Context, monthsBack int) ([]CostEnt
 					PrevMonth: prevCosts[group.Keys[0]],
 				})
 				var f float64
-				fmt.Sscanf(amt, "%f", &f)
+				if v, err := strconv.ParseFloat(amt, 64); err == nil {
+					f = v
+				}
 				total += f
 			}
 		}

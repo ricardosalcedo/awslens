@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	profile string
-	region  string
+	profile    string
+	region     string
+	monthsBack int
 )
 
 var rootCmd = &cobra.Command{
@@ -31,7 +32,7 @@ var rootCmd = &cobra.Command{
 				r = region
 			}
 
-			err := tui.Start(p, r)
+			err := tui.Start(p, r, monthsBack)
 			if err == tui.ErrBackToPicker {
 				p, r = "", ""
 				continue
@@ -50,4 +51,5 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&profile, "profile", "p", "", "AWS profile (skips picker)")
 	rootCmd.PersistentFlags().StringVarP(&region, "region", "r", "", "AWS region override")
+	rootCmd.PersistentFlags().IntVarP(&monthsBack, "months-back", "m", 0, "Start costs view N months back (0=current)")
 }

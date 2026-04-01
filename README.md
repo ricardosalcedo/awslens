@@ -58,6 +58,7 @@ Download pre-built binaries for Linux, macOS, and Windows from the [Releases](ht
 awslens                        # interactive profile picker
 awslens --profile admin        # skip picker, use specific profile
 awslens --region us-west-2     # override region
+awslens --months-back 3        # start costs view 3 months back
 ```
 
 ## Key Bindings

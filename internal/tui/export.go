@@ -165,13 +165,13 @@ func writeCSV(path string, data []map[string]string) error {
 			}
 		}
 	}
-	w.Write(headers)
+	w.Write(headers) //nolint:errcheck // flushed below
 	for _, row := range data {
 		var vals []string
 		for _, h := range headers {
 			vals = append(vals, row[h])
 		}
-		w.Write(vals)
+		w.Write(vals) //nolint:errcheck // flushed below
 	}
 	w.Flush()
 	return w.Error()

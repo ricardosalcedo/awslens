@@ -49,6 +49,11 @@ type costsMsg struct {
 	entries []awsclient.CostEntry
 	total   string
 }
+
+type costCacheEntry struct {
+	entries []awsclient.CostEntry
+	total   string
+}
 type dynamoMsg struct{ tables []awsclient.DynamoTable }
 type apigwMsg struct{ apis []awsclient.RestAPI }
 type ecrMsg struct{ repos []awsclient.ECRRepo }
@@ -181,6 +186,7 @@ type model struct {
 	costs      []awsclient.CostEntry
 	costTotal  string
 	costPeriod int // 0 = current month, 1 = last month, etc.
+	costCache  map[int]costCacheEntry // period -> cached data
 	tables    []awsclient.DynamoTable
 	apis      []awsclient.RestAPI
 	repos     []awsclient.ECRRepo
@@ -405,6 +411,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.costs = msg.entries
 		m.costTotal = msg.total
+		if m.costCache == nil {
+			m.costCache = map[int]costCacheEntry{}
+		}
+		m.costCache[m.costPeriod] = costCacheEntry(msg)
 	case dynamoMsg:
 		m.loading = false
 		m.tables = msg.tables
@@ -638,10 +648,15 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		m.filtering = true
 		m.filter = ""
 	case "[":
-		if m.current == viewCosts {
+		if m.current == viewCosts && m.costPeriod < 12 {
 			m.costPeriod++
 			m.cursor = 0
 			m.scroll = 0
+			if cached, ok := m.costCache[m.costPeriod]; ok {
+				m.costs = cached.entries
+				m.costTotal = cached.total
+				return m, nil
+			}
 			return m.reloadService()
 		}
 	case "]":
@@ -649,6 +664,11 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			m.costPeriod--
 			m.cursor = 0
 			m.scroll = 0
+			if cached, ok := m.costCache[m.costPeriod]; ok {
+				m.costs = cached.entries
+				m.costTotal = cached.total
+				return m, nil
+			}
 			return m.reloadService()
 		}
 	case "x":
@@ -1357,7 +1377,7 @@ func scrollLines(lines []string, scroll, visible int) []string {
 // ErrBackToPicker signals the caller to return to the profile picker.
 var ErrBackToPicker = fmt.Errorf("back to picker")
 
-func Start(profile, region string) error {
+func Start(profile, region string, monthsBack int) error {
 	client, err := awsclient.New(profile, region)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
@@ -1365,7 +1385,8 @@ func Start(profile, region string) error {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(orange)
-	result, err := tea.NewProgram(model{client: client, probing: true, spinner: s}, tea.WithAltScreen()).Run()
+	m := model{client: client, probing: true, spinner: s, costPeriod: monthsBack}
+	result, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
 		return err
 	}
