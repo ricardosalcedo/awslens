@@ -1,0 +1,26 @@
+repos:
+  # Secrets detection
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # Go static analysis
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.62.2
+    hooks:
+      - id: golangci-lint
+
+  # SAST — gosec (Go security scanner)
+  # G104: unhandled errors (Sscanf in display code)
+  # G115: int overflow (safe int->int32 in bounded contexts)
+  # G304: file inclusion via variable (intentional ~/.aws access)
+  # G703: path traversal (intentional ~/.aws access)
+  - repo: local
+    hooks:
+      - id: gosec
+        name: gosec
+        entry: gosec -quiet -exclude=G104,G115,G304,G703 ./...
+        language: system
+        pass_filenames: false
+        types: [go]
