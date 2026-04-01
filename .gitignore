@@ -1,3 +1,32 @@
+# awslens
+# build output
 awslens
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# test
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# dist (goreleaser)
+dist/

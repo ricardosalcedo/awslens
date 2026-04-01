@@ -1,8 +1,15 @@
 # ⬡ awslens
 
+[![CI](https://github.com/ricardosalcedo/awslens/actions/workflows/ci.yml/badge.svg)](https://github.com/ricardosalcedo/awslens/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ricardosalcedo/awslens)](https://goreportcard.com/report/github.com/ricardosalcedo/awslens)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A modern TUI for AWS — see everything, navigate fast.
 
 Built with Go, [Bubble Tea](https://github.com/charmbracelet/bubbletea), and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
+
+<!-- TODO: Add a demo GIF here -->
+<!-- ![awslens demo](docs/demo.gif) -->
 
 ## Features
 
@@ -10,24 +17,41 @@ Built with Go, [Bubble Tea](https://github.com/charmbracelet/bubbletea), and [Li
 - **Multi-region scanning** across 12 regions in parallel
 - **CRUD operations** — create, delete, edit resources inline
 - **AI insights** — press `i` for Bedrock-powered analysis of any resource (Claude 3 Haiku)
+- **Security audit** — scans security groups, S3 buckets, IAM users, and root account
 - **Profile picker** with IAM role assumption and SSO support
 - **Sensitive value masking** — SSM params and Lambda env vars masked by default
 - **Search/filter** — press `/` to filter any resource list
 - **Scrollable views** with keyboard navigation
 
+## Supported Services
+
+EC2 · Lambda · S3 · RDS · DynamoDB · API Gateway · ECS · ECR · Step Functions · Load Balancers · Route 53 · Secrets Manager · SSM Parameter Store · SQS · SNS · CloudWatch · CloudFormation · Cost Explorer · ElastiCache · OpenSearch · MSK · Glue · Athena · CodeCommit · CodePipeline · CodeBuild · EventBridge · WAF
+
 ## Install
 
+### Homebrew (macOS/Linux)
+
 ```bash
-go install github.com/awslens/awslens@latest
+brew install ricardosalcedo/tap/awslens
 ```
 
-Or build from source:
+### Go
+
+```bash
+go install github.com/ricardosalcedo/awslens@latest
+```
+
+### From source
 
 ```bash
 git clone https://github.com/ricardosalcedo/awslens.git
 cd awslens
 go build -o awslens .
 ```
+
+### Binary releases
+
+Download pre-built binaries for Linux, macOS, and Windows from the [Releases](https://github.com/ricardosalcedo/awslens/releases) page.
 
 ## Usage
 
@@ -42,9 +66,9 @@ awslens --region us-west-2     # override region
 | Key | Action |
 |-----|--------|
 | `↑/↓` or `j/k` | Navigate |
-| `enter` | Drill down / select |
-| `esc` or `q` | Go back |
-| `ctrl+c` | Quit |
+| `Enter` | Drill down / select |
+| `Esc` or `q` | Go back |
+| `Ctrl+C` | Quit |
 | `i` | AI insight (Bedrock) |
 | `r` | Refresh |
 | `/` | Filter list |
@@ -53,16 +77,28 @@ awslens --region us-west-2     # override region
 | `d` | Delete resource |
 | `e` | Edit resource |
 
-## Supported Services
+## Architecture
 
-EC2 · Lambda · S3 · RDS · DynamoDB · API Gateway · ECS · ECR · Step Functions · Load Balancers · Route53 · Secrets Manager · SSM Parameter Store · SQS · SNS · CloudWatch · CloudFormation · Cost Explorer · ElastiCache · OpenSearch · MSK · Glue · Athena · CodeCommit · CodePipeline · CodeBuild · EventBridge · WAF
+```
+awslens
+├── cmd/            # CLI entry point (cobra)
+├── internal/
+│   ├── aws/        # AWS SDK clients, service fetchers, security audit, AI insights
+│   └── tui/        # Bubble Tea views, CRUD forms, profile picker, export
+├── main.go
+└── .goreleaser.yml # Cross-platform release config
+```
 
 ## Requirements
 
 - Go 1.21+
 - AWS credentials configured (`~/.aws/config` and `~/.aws/credentials`)
-- For AI insights: Bedrock model access enabled for Claude 3 Haiku
+- For AI insights: Bedrock model access enabled for Claude 3 Haiku in your region
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT
+[MIT](LICENSE)
