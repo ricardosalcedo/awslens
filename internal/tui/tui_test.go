@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	awsclient "github.com/awslens/awslens/internal/aws"
@@ -181,5 +182,105 @@ func TestProfileMeta(t *testing.T) {
 	got = profileMeta(p)
 	if !containsStr(got, "Admin") {
 		t.Errorf("role profile meta should contain role name, got %q", got)
+	}
+}
+
+func TestMaskKey(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		{"", "••••"},
+		{"ab", "••••"},
+		{"abcd", "••••"},
+		{"abcde", "•bcde"},
+		{"AKIAIOSFODNN7EXAMPLE", "••••••••••••••••MPLE"},
+	}
+	for _, tt := range tests {
+		got := maskKey(tt.input)
+		if got != tt.want {
+			t.Errorf("maskKey(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestStateColor(t *testing.T) {
+	// Just verify it doesn't panic and returns non-empty for known states
+	states := []string{"running", "stopped", "terminated", "unknown", "active", "available"}
+	for _, s := range states {
+		got := stateColor(s)
+		if got == "" {
+			t.Errorf("stateColor(%q) returned empty", s)
+		}
+	}
+}
+
+func TestAlarmStateColor(t *testing.T) {
+	states := []string{"OK", "ALARM", "INSUFFICIENT_DATA"}
+	for _, s := range states {
+		got := alarmStateColor(s)
+		if got == "" {
+			t.Errorf("alarmStateColor(%q) returned empty", s)
+		}
+	}
+}
+
+func TestCrudHint(t *testing.T) {
+	// services with CRUD hints
+	crudViews := []view{viewS3, viewLambda, viewDynamo, viewSQS, viewSNS, viewSSM, viewSecrets, viewECR, viewCodeCommit, viewEventBridge}
+	for _, v := range crudViews {
+		m := model{current: v}
+		if m.crudHint() == "" {
+			t.Errorf("crudHint() empty for view %d", v)
+		}
+	}
+	// service without CRUD hint
+	m := model{current: viewRDS}
+	if m.crudHint() != "" {
+		t.Error("RDS should not have a CRUD hint")
+	}
+}
+
+func TestWriteJSONAndCSV(t *testing.T) {
+	dir := t.TempDir()
+	data := []map[string]string{
+		{"name": "a", "value": "1"},
+		{"name": "b", "value": "2"},
+	}
+
+	jsonPath := dir + "/test.json"
+	if err := writeJSON(jsonPath, data); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
+	jsonBytes, _ := os.ReadFile(jsonPath)
+	if !containsStr(string(jsonBytes), `"name"`) {
+		t.Error("JSON output missing expected content")
+	}
+
+	csvPath := dir + "/test.csv"
+	if err := writeCSV(csvPath, data); err != nil {
+		t.Fatalf("writeCSV: %v", err)
+	}
+	csvBytes, _ := os.ReadFile(csvPath)
+	csvStr := string(csvBytes)
+	if !containsStr(csvStr, "name") || !containsStr(csvStr, "a") {
+		t.Error("CSV output missing expected content")
+	}
+
+	// empty data
+	if err := writeCSV(dir+"/empty.csv", nil); err != nil {
+		t.Fatalf("writeCSV(nil): %v", err)
+	}
+}
+
+func TestCurrentServiceName(t *testing.T) {
+	m := model{current: viewEC2}
+	got := m.currentServiceName()
+	if got == "unknown" || got == "" {
+		t.Errorf("currentServiceName for EC2 = %q", got)
+	}
+
+	m.current = view(9999)
+	if m.currentServiceName() != "unknown" {
+		t.Error("invalid view should return 'unknown'")
 	}
 }

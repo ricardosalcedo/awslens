@@ -2,6 +2,7 @@ package aws
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -222,5 +223,158 @@ func TestFormatDeps(t *testing.T) {
 	// empty
 	if FormatDeps(nil) == "" {
 		t.Error("nil deps should return 'No dependencies' message")
+	}
+}
+
+func TestParseCostAmount(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+	}{
+		{"10.50", 10.50},
+		{"0", 0},
+		{"", 0},
+		{"garbage", 0},
+		{"0.001", 0.001},
+	}
+	for _, tt := range tests {
+		got := ParseCostAmount(tt.input)
+		if got != tt.want {
+			t.Errorf("ParseCostAmount(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFmtMetric(t *testing.T) {
+	m := &MetricSummary{Name: "CPUUtilization", Avg: 25.5, Max: 80.0, Sum: 1000}
+	got := fmtMetric(m, "%")
+	if !containsStr(got, "CPUUtilization") || !containsStr(got, "25.50%") || !containsStr(got, "80.00%") {
+		t.Errorf("fmtMetric = %q, missing expected content", got)
+	}
+	if fmtMetric(nil, "%") != "" {
+		t.Error("fmtMetric(nil) should return empty string")
+	}
+}
+
+func TestEnrichContextString(t *testing.T) {
+	// empty context
+	e := &EnrichContext{}
+	if e.String() != "" {
+		t.Error("empty EnrichContext should return empty string")
+	}
+
+	// with all fields
+	e = &EnrichContext{
+		Metrics: []string{"cpu: avg=10"},
+		Errors:  []string{"ERROR timeout"},
+		Deps:    []string{"myFunc → myTable"},
+		Extra:   []string{"runtime: go1.21"},
+	}
+	got := e.String()
+	if !containsStr(got, "7-DAY METRICS") {
+		t.Error("should contain METRICS header")
+	}
+	if !containsStr(got, "RECENT ERRORS") {
+		t.Error("should contain ERRORS header")
+	}
+	if !containsStr(got, "DEPENDENCIES") {
+		t.Error("should contain DEPENDENCIES header")
+	}
+	if !containsStr(got, "ADDITIONAL CONTEXT") {
+		t.Error("should contain ADDITIONAL CONTEXT header")
+	}
+
+	// with only metrics
+	e = &EnrichContext{Metrics: []string{"cpu: avg=10"}}
+	got = e.String()
+	if !containsStr(got, "METRICS") || containsStr(got, "ERRORS") {
+		t.Error("should only contain METRICS section")
+	}
+}
+
+func TestContainsStr(t *testing.T) {
+	if !containsStr("hello world", "world") {
+		t.Error("should find 'world'")
+	}
+	if containsStr("hello", "world") {
+		t.Error("should not find 'world' in 'hello'")
+	}
+	if containsStr("", "a") {
+		t.Error("empty string should not contain anything")
+	}
+	if !containsStr("a", "a") {
+		t.Error("single char exact match should work")
+	}
+}
+
+func TestSplitOn(t *testing.T) {
+	got := splitOn("a b c", ' ')
+	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
+		t.Errorf("splitOn('a b c', ' ') = %v", got)
+	}
+	got = splitOn("single", ' ')
+	if len(got) != 1 || got[0] != "single" {
+		t.Errorf("splitOn('single', ' ') = %v", got)
+	}
+	got = splitOn("", ' ')
+	if len(got) != 1 || got[0] != "" {
+		t.Errorf("splitOn('', ' ') = %v", got)
+	}
+}
+
+func TestParseConfig(t *testing.T) {
+	// create a temp config file
+	dir := t.TempDir()
+	configPath := dir + "/config"
+	content := `[default]
+region = us-east-1
+
+[profile dev]
+region = eu-west-1
+role_arn = arn:aws:iam::123:role/Dev
+source_profile = default
+
+[profile sso-user]
+sso_account_id = 111222333
+sso_role_name = ReadOnly
+`
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	profiles := map[string]*Profile{}
+	parseConfig(configPath, profiles, true)
+
+	if len(profiles) != 3 {
+		t.Fatalf("expected 3 profiles, got %d", len(profiles))
+	}
+	if profiles["default"].Region != "us-east-1" {
+		t.Errorf("default region = %q", profiles["default"].Region)
+	}
+	if profiles["dev"].RoleARN != "arn:aws:iam::123:role/Dev" {
+		t.Errorf("dev role_arn = %q", profiles["dev"].RoleARN)
+	}
+	if profiles["dev"].SourceProfile != "default" {
+		t.Errorf("dev source_profile = %q", profiles["dev"].SourceProfile)
+	}
+	if profiles["sso-user"].SSOAccount != "111222333" {
+		t.Errorf("sso-user sso_account_id = %q", profiles["sso-user"].SSOAccount)
+	}
+	if profiles["sso-user"].SSORole != "ReadOnly" {
+		t.Errorf("sso-user sso_role_name = %q", profiles["sso-user"].SSORole)
+	}
+
+	// non-existent file should not panic
+	parseConfig(dir+"/nonexistent", profiles, false)
+}
+
+func TestDynamoAttrToString(t *testing.T) {
+	got := dynamoAttrToString("hello")
+	if got != "hello" {
+		t.Errorf("dynamoAttrToString(string) = %q", got)
+	}
+	got = dynamoAttrToString(42)
+	if got != "42" {
+		t.Errorf("dynamoAttrToString(int) = %q", got)
 	}
 }
