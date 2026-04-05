@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -167,28 +168,39 @@ type Bucket struct {
 func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
+
 	svc := s3.NewFromConfig(c.Config)
 	out, err := svc.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err != nil {
 		return nil, err
 	}
-	var buckets []Bucket
-	for _, b := range out.Buckets {
-		bucket := Bucket{Name: aws.ToString(b.Name)}
+
+	buckets := make([]Bucket, len(out.Buckets))
+	for i, b := range out.Buckets {
+		buckets[i].Name = aws.ToString(b.Name)
 		if b.CreationDate != nil {
-			bucket.CreationDate = b.CreationDate.Format("2006-01-02")
+			buckets[i].CreationDate = b.CreationDate.Format("2006-01-02")
 		}
-		// get bucket region
-		loc, err := svc.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: b.Name})
-		if err == nil {
-			bucket.Region = string(loc.LocationConstraint)
-			if bucket.Region == "" {
-				bucket.Region = "us-east-1"
-			}
-		}
-		buckets = append(buckets, bucket)
 	}
+
+	// Fetch bucket locations in parallel to avoid sequential timeout issues.
+	var wg sync.WaitGroup
+	for i := range buckets {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			loc, err := svc.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+				Bucket: aws.String(buckets[idx].Name),
+			})
+			if err == nil {
+				buckets[idx].Region = string(loc.LocationConstraint)
+				if buckets[idx].Region == "" {
+					buckets[idx].Region = "us-east-1"
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 	return buckets, nil
 }
 
