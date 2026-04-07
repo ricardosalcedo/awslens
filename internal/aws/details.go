@@ -324,6 +324,9 @@ func CostBar(amount, max float64, width int) string {
 	if filled < 1 && amount > 0 {
 		filled = 1
 	}
+	if filled > width {
+		filled = width
+	}
 	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 }
 
