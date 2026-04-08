@@ -35,11 +35,16 @@ type Instance struct {
 }
 
 func (c *Client) ListInstances(ctx context.Context) ([]Instance, error) {
+	return ListInstancesWithAPI(ctx, ec2.NewFromConfig(c.Config), c.Region)
+}
+
+// ListInstancesWithAPI lists EC2 instances using the provided EC2API.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListInstancesWithAPI(ctx context.Context, api EC2API, region string) ([]Instance, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := ec2.NewFromConfig(c.Config)
-	out, err := svc.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
+
+	out, err := api.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +56,7 @@ func (c *Client) ListInstances(ctx context.Context) ([]Instance, error) {
 				State:  string(i.State.Name),
 				Type:   string(i.InstanceType),
 				AZ:     aws.ToString(i.Placement.AvailabilityZone),
-				Region: c.Region,
+				Region: region,
 			}
 			if i.PublicIpAddress != nil {
 				inst.PublicIP = aws.ToString(i.PublicIpAddress)
@@ -165,11 +170,16 @@ type Bucket struct {
 }
 
 func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
+	return ListBucketsWithAPI(ctx, s3.NewFromConfig(c.Config))
+}
+
+// ListBucketsWithAPI lists S3 buckets using the provided S3API.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListBucketsWithAPI(ctx context.Context, api S3API) ([]Bucket, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := s3.NewFromConfig(c.Config)
-	out, err := svc.ListBuckets(ctx, &s3.ListBucketsInput{})
+
+	out, err := api.ListBuckets(ctx, &s3.ListBucketsInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +190,7 @@ func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
 			bucket.CreationDate = b.CreationDate.Format("2006-01-02")
 		}
 		// get bucket region
-		loc, err := svc.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: b.Name})
+		loc, err := api.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: b.Name})
 		if err == nil {
 			bucket.Region = string(loc.LocationConstraint)
 			if bucket.Region == "" {
