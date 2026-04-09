@@ -114,14 +114,19 @@ type Function struct {
 }
 
 func (c *Client) ListFunctions(ctx context.Context) ([]Function, error) {
+	return ListFunctionsWithAPI(ctx, lambda.NewFromConfig(c.Config), c.Region)
+}
+
+// ListFunctionsWithAPI lists Lambda functions using the provided LambdaAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListFunctionsWithAPI(ctx context.Context, api LambdaAPI, region string) ([]Function, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := lambda.NewFromConfig(c.Config)
+
 	var fns []Function
-	paginator := lambda.NewListFunctionsPaginator(svc, &lambda.ListFunctionsInput{})
-	for paginator.HasMorePages() {
-		out, err := paginator.NextPage(ctx)
+	var marker *string
+	for {
+		out, err := api.ListFunctions(ctx, &lambda.ListFunctionsInput{Marker: marker})
 		if err != nil {
 			return nil, err
 		}
@@ -134,9 +139,13 @@ func (c *Client) ListFunctions(ctx context.Context) ([]Function, error) {
 				LastModified: parseLambdaTime(aws.ToString(f.LastModified)),
 				Handler:      aws.ToString(f.Handler),
 				Role:         aws.ToString(f.Role),
-				Region:       c.Region,
+				Region:       region,
 			})
 		}
+		if out.NextMarker == nil {
+			break
+		}
+		marker = out.NextMarker
 	}
 	return fns, nil
 }
@@ -278,30 +287,46 @@ type Queue struct {
 }
 
 func (c *Client) ListQueues(ctx context.Context) ([]Queue, error) {
+	return ListQueuesWithAPI(ctx, sqs.NewFromConfig(c.Config))
+}
+
+// ListQueuesWithAPI lists SQS queues using the provided SQSAPI.
+// GetQueueAttributes calls are parallelized to prevent timeouts on accounts with many queues.
+func ListQueuesWithAPI(ctx context.Context, api SQSAPI) ([]Queue, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := sqs.NewFromConfig(c.Config)
-	out, err := svc.ListQueues(ctx, &sqs.ListQueuesInput{})
+
+	out, err := api.ListQueues(ctx, &sqs.ListQueuesInput{})
 	if err != nil {
 		return nil, err
 	}
-	var queues []Queue
-	for _, url := range out.QueueUrls {
-		q := Queue{URL: url}
-		// extract name from URL
-		parts := splitLast(url, "/")
-		q.Name = parts
-		// get attributes
-		attrs, err := svc.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
-			QueueUrl:       aws.String(url),
-			AttributeNames: []sqstypes.QueueAttributeName{"ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"},
-		})
-		if err == nil {
-			q.Messages = attrs.Attributes["ApproximateNumberOfMessages"]
-			q.MessagesInFlight = attrs.Attributes["ApproximateNumberOfMessagesNotVisible"]
-		}
-		queues = append(queues, q)
+
+	type result struct {
+		idx   int
+		queue Queue
+	}
+	ch := make(chan result, len(out.QueueUrls))
+
+	for i, url := range out.QueueUrls {
+		i, url := i, url
+		go func() {
+			q := Queue{URL: url, Name: splitLast(url, "/")}
+			attrs, err := api.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
+				QueueUrl:       aws.String(url),
+				AttributeNames: []sqstypes.QueueAttributeName{"ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"},
+			})
+			if err == nil {
+				q.Messages = attrs.Attributes["ApproximateNumberOfMessages"]
+				q.MessagesInFlight = attrs.Attributes["ApproximateNumberOfMessagesNotVisible"]
+			}
+			ch <- result{idx: i, queue: q}
+		}()
+	}
+
+	queues := make([]Queue, len(out.QueueUrls))
+	for range out.QueueUrls {
+		r := <-ch
+		queues[r.idx] = r.queue
 	}
 	return queues, nil
 }
