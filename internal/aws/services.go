@@ -204,11 +204,16 @@ type DBInstance struct {
 }
 
 func (c *Client) ListDBInstances(ctx context.Context) ([]DBInstance, error) {
+	return ListDBInstancesWithAPI(ctx, rds.NewFromConfig(c.Config))
+}
+
+// ListDBInstancesWithAPI lists RDS instances using the provided RDSAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListDBInstancesWithAPI(ctx context.Context, api RDSAPI) ([]DBInstance, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := rds.NewFromConfig(c.Config)
-	out, err := svc.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{})
+
+	out, err := api.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -240,18 +245,23 @@ type Cluster struct {
 }
 
 func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
+	return ListClustersWithAPI(ctx, ecs.NewFromConfig(c.Config))
+}
+
+// ListClustersWithAPI lists ECS clusters using the provided ECSAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListClustersWithAPI(ctx context.Context, api ECSAPI) ([]Cluster, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := ecs.NewFromConfig(c.Config)
-	arns, err := svc.ListClusters(ctx, &ecs.ListClustersInput{})
+
+	arns, err := api.ListClusters(ctx, &ecs.ListClustersInput{})
 	if err != nil {
 		return nil, err
 	}
 	if len(arns.ClusterArns) == 0 {
 		return nil, nil
 	}
-	out, err := svc.DescribeClusters(ctx, &ecs.DescribeClustersInput{Clusters: arns.ClusterArns})
+	out, err := api.DescribeClusters(ctx, &ecs.DescribeClustersInput{Clusters: arns.ClusterArns})
 	if err != nil {
 		return nil, err
 	}
