@@ -314,11 +314,16 @@ type Topic struct {
 }
 
 func (c *Client) ListTopics(ctx context.Context) ([]Topic, error) {
+	return ListTopicsWithAPI(ctx, sns.NewFromConfig(c.Config))
+}
+
+// ListTopicsWithAPI lists SNS topics using the provided SNSAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListTopicsWithAPI(ctx context.Context, api SNSAPI) ([]Topic, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := sns.NewFromConfig(c.Config)
-	out, err := svc.ListTopics(ctx, &sns.ListTopicsInput{})
+
+	out, err := api.ListTopics(ctx, &sns.ListTopicsInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -340,21 +345,30 @@ type Stack struct {
 }
 
 func (c *Client) ListStacks(ctx context.Context) ([]Stack, error) {
+	return ListStacksWithAPI(ctx, cloudformation.NewFromConfig(c.Config), c.Region)
+}
+
+// ListStacksWithAPI lists CloudFormation stacks using the provided CloudFormationAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListStacksWithAPI(ctx context.Context, api CloudFormationAPI, region string) ([]Stack, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := cloudformation.NewFromConfig(c.Config)
-	out, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{})
+
+	out, err := api.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{})
 	if err != nil {
 		return nil, err
 	}
 	var stacks []Stack
 	for _, s := range out.Stacks {
+		var drift string
+		if s.DriftInformation != nil {
+			drift = string(s.DriftInformation.StackDriftStatus)
+		}
 		stacks = append(stacks, Stack{
 			Name:   aws.ToString(s.StackName),
 			Status: string(s.StackStatus),
-			Drift:  string(s.DriftInformation.StackDriftStatus),
-			Region: c.Region,
+			Drift:  drift,
+			Region: region,
 		})
 	}
 	return stacks, nil
