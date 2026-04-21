@@ -35,11 +35,16 @@ type APIResource struct {
 }
 
 func (c *Client) ListRestAPIs(ctx context.Context) ([]RestAPI, error) {
+	return ListRestAPIsWithAPI(ctx, apigateway.NewFromConfig(c.Config), c.Region)
+}
+
+// ListRestAPIsWithAPI lists API Gateway REST APIs using the provided APIGatewayAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListRestAPIsWithAPI(ctx context.Context, api APIGatewayAPI, region string) ([]RestAPI, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	
-	svc := apigateway.NewFromConfig(c.Config)
-	out, err := svc.GetRestApis(ctx, &apigateway.GetRestApisInput{})
+	out, err := api.GetRestApis(ctx, &apigateway.GetRestApisInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +54,7 @@ func (c *Client) ListRestAPIs(ctx context.Context) ([]RestAPI, error) {
 			ID:          aws.ToString(a.Id),
 			Name:        aws.ToString(a.Name),
 			Description: aws.ToString(a.Description),
-			Region:      c.Region,
+			Region:      region,
 		}
 		if a.CreatedDate != nil {
 			api.CreatedDate = a.CreatedDate.Format("2006-01-02")
@@ -115,21 +120,30 @@ type DynamoTable struct {
 }
 
 func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
+	return ListDynamoTablesWithAPI(ctx, dynamodb.NewFromConfig(c.Config), c.Region)
+}
+
+// ListDynamoTablesWithAPI lists DynamoDB tables using the provided DynamoDBAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListDynamoTablesWithAPI(ctx context.Context, api DynamoDBAPI, region string) ([]DynamoTable, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := dynamodb.NewFromConfig(c.Config)
-	paginator := dynamodb.NewListTablesPaginator(svc, &dynamodb.ListTablesInput{})
+
 	var tables []DynamoTable
-	for paginator.HasMorePages() {
-		out, err := paginator.NextPage(ctx)
+	var lastKey *string
+	for {
+		input := &dynamodb.ListTablesInput{}
+		if lastKey != nil {
+			input.ExclusiveStartTableName = lastKey
+		}
+		out, err := api.ListTables(ctx, input)
 		if err != nil {
 			return nil, err
 		}
 		for _, name := range out.TableNames {
-			desc, err := svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(name)})
+			desc, err := api.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(name)})
 			if err != nil {
-				tables = append(tables, DynamoTable{Name: name})
+				tables = append(tables, DynamoTable{Name: name, Region: region})
 				continue
 			}
 			t := desc.Table
@@ -149,9 +163,13 @@ func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
 					dt.SKName = aws.ToString(ks.AttributeName)
 				}
 			}
-			dt.Region = c.Region
+			dt.Region = region
 			tables = append(tables, dt)
 		}
+		if out.LastEvaluatedTableName == nil {
+			break
+		}
+		lastKey = out.LastEvaluatedTableName
 	}
 	return tables, nil
 }

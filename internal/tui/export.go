@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -154,17 +155,18 @@ func writeCSV(path string, data []map[string]string) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	// collect headers
+	// collect headers deterministically
 	headerSet := map[string]bool{}
-	var headers []string
 	for _, row := range data {
 		for k := range row {
-			if !headerSet[k] {
-				headerSet[k] = true
-				headers = append(headers, k)
-			}
+			headerSet[k] = true
 		}
 	}
+	headers := make([]string, 0, len(headerSet))
+	for k := range headerSet {
+		headers = append(headers, k)
+	}
+	sort.Strings(headers)
 	w.Write(headers) //nolint:errcheck // flushed below
 	for _, row := range data {
 		var vals []string

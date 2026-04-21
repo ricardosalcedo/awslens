@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"encoding/csv"
 	"fmt"
+	"os"
 	"testing"
 
 	awsclient "github.com/awslens/awslens/internal/aws"
@@ -181,5 +183,59 @@ func TestProfileMeta(t *testing.T) {
 	got = profileMeta(p)
 	if !containsStr(got, "Admin") {
 		t.Errorf("role profile meta should contain role name, got %q", got)
+	}
+}
+
+func TestWriteCSVDeterministicHeaders(t *testing.T) {
+	data := []map[string]string{
+		{"Zebra": "1", "Apple": "2", "Mango": "3"},
+		{"Zebra": "4", "Apple": "5", "Banana": "6"},
+	}
+
+	dir := t.TempDir()
+	path := dir + "/test.csv"
+	if err := writeCSV(path, data); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// header row must be sorted
+	want := []string{"Apple", "Banana", "Mango", "Zebra"}
+	got := records[0]
+	if len(got) != len(want) {
+		t.Fatalf("header len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("header[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	// verify data rows use the sorted header order
+	if records[1][0] != "2" || records[1][3] != "1" {
+		t.Errorf("row 1 = %v, expected Apple=2 ... Zebra=1", records[1])
+	}
+}
+
+func TestWriteCSVEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/empty.csv"
+	if err := writeCSV(path, nil); err != nil {
+		t.Fatal(err)
+	}
+	// file should not be created for empty data
+	if _, err := os.Stat(path); err == nil {
+		t.Error("writeCSV with nil data should not create a file")
 	}
 }
