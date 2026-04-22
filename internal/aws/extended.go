@@ -495,10 +495,15 @@ type SFNExecution struct {
 }
 
 func (c *Client) ListStateMachines(ctx context.Context) ([]StateMachine, error) {
+	return ListStateMachinesWithAPI(ctx, sfn.NewFromConfig(c.Config), c.Region)
+}
+
+// ListStateMachinesWithAPI lists Step Functions state machines using the provided SFNAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListStateMachinesWithAPI(ctx context.Context, api SFNAPI, region string) ([]StateMachine, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	svc := sfn.NewFromConfig(c.Config)
-	out, err := svc.ListStateMachines(ctx, &sfn.ListStateMachinesInput{})
+	out, err := api.ListStateMachines(ctx, &sfn.ListStateMachinesInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +517,7 @@ func (c *Client) ListStateMachines(ctx context.Context) ([]StateMachine, error) 
 		if s.CreationDate != nil {
 			sm.Created = s.CreationDate.Format("2006-01-02")
 		}
-		sm.Region = c.Region
+		sm.Region = region
 		sms = append(sms, sm)
 	}
 	return sms, nil
@@ -559,10 +564,15 @@ type CWAlarm struct {
 }
 
 func (c *Client) ListAlarms(ctx context.Context) ([]CWAlarm, error) {
+	return ListAlarmsWithAPI(ctx, cloudwatch.NewFromConfig(c.Config), c.Region)
+}
+
+// ListAlarmsWithAPI lists CloudWatch alarms using the provided CloudWatchAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListAlarmsWithAPI(ctx context.Context, api CloudWatchAPI, region string) ([]CWAlarm, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	svc := cloudwatch.NewFromConfig(c.Config)
-	out, err := svc.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{})
+	out, err := api.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +588,7 @@ func (c *Client) ListAlarms(ctx context.Context) ([]CWAlarm, error) {
 		if a.StateUpdatedTimestamp != nil {
 			alarm.Updated = a.StateUpdatedTimestamp.Format("2006-01-02 15:04")
 		}
-		alarm.Region = c.Region
+		alarm.Region = region
 		alarms = append(alarms, alarm)
 	}
 	return alarms, nil
