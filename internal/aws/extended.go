@@ -211,11 +211,16 @@ type LBTargetGroup struct {
 }
 
 func (c *Client) ListLoadBalancers(ctx context.Context) ([]LoadBalancer, error) {
+	return ListLoadBalancersWithAPI(ctx, elasticloadbalancingv2.NewFromConfig(c.Config))
+}
+
+// ListLoadBalancersWithAPI lists ELBv2 load balancers using the provided ELBAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListLoadBalancersWithAPI(ctx context.Context, api ELBAPI) ([]LoadBalancer, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := elasticloadbalancingv2.NewFromConfig(c.Config)
-	out, err := svc.DescribeLoadBalancers(ctx, &elasticloadbalancingv2.DescribeLoadBalancersInput{})
+
+	out, err := api.DescribeLoadBalancers(ctx, &elasticloadbalancingv2.DescribeLoadBalancersInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -225,9 +230,11 @@ func (c *Client) ListLoadBalancers(ctx context.Context) ([]LoadBalancer, error) 
 			Name:   aws.ToString(lb.LoadBalancerName),
 			Type:   string(lb.Type),
 			Scheme: string(lb.Scheme),
-			State:  string(lb.State.Code),
 			DNS:    aws.ToString(lb.DNSName),
 			VPC:    aws.ToString(lb.VpcId),
+		}
+		if lb.State != nil {
+			l.State = string(lb.State.Code)
 		}
 		if lb.CreatedTime != nil {
 			l.Created = lb.CreatedTime.Format("2006-01-02")
@@ -425,24 +432,32 @@ type ECRImage struct {
 }
 
 func (c *Client) ListECRRepos(ctx context.Context) ([]ECRRepo, error) {
+	return ListECRReposWithAPI(ctx, ecr.NewFromConfig(c.Config), c.Region)
+}
+
+// ListECRReposWithAPI lists ECR repositories using the provided ECRAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListECRReposWithAPI(ctx context.Context, api ECRAPI, region string) ([]ECRRepo, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	svc := ecr.NewFromConfig(c.Config)
-	out, err := svc.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{})
+
+	out, err := api.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{})
 	if err != nil {
 		return nil, err
 	}
 	var repos []ECRRepo
 	for _, r := range out.Repositories {
 		repo := ECRRepo{
-			Name:       aws.ToString(r.RepositoryName),
-			URI:        aws.ToString(r.RepositoryUri),
-			ScanOnPush: r.ImageScanningConfiguration.ScanOnPush,
+			Name:   aws.ToString(r.RepositoryName),
+			URI:    aws.ToString(r.RepositoryUri),
+			Region: region,
+		}
+		if r.ImageScanningConfiguration != nil {
+			repo.ScanOnPush = r.ImageScanningConfiguration.ScanOnPush
 		}
 		if r.CreatedAt != nil {
 			repo.Created = r.CreatedAt.Format("2006-01-02")
 		}
-		repo.Region = c.Region
 		repos = append(repos, repo)
 	}
 	return repos, nil
