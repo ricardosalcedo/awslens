@@ -269,11 +269,16 @@ type Secret struct {
 }
 
 func (c *Client) ListSecrets(ctx context.Context) ([]Secret, error) {
+	return ListSecretsWithAPI(ctx, secretsmanager.NewFromConfig(c.Config))
+}
+
+// ListSecretsWithAPI lists secrets using the provided SecretsManagerAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListSecretsWithAPI(ctx context.Context, api SecretsManagerAPI) ([]Secret, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := secretsmanager.NewFromConfig(c.Config)
-	out, err := svc.ListSecrets(ctx, &secretsmanager.ListSecretsInput{})
+
+	out, err := api.ListSecrets(ctx, &secretsmanager.ListSecretsInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -305,11 +310,16 @@ type SSMParam struct {
 }
 
 func (c *Client) ListSSMParams(ctx context.Context) ([]SSMParam, error) {
+	return ListSSMParamsWithAPI(ctx, ssm.NewFromConfig(c.Config))
+}
+
+// ListSSMParamsWithAPI lists SSM parameters using the provided SSMAPI.
+// Extracted to enable mock-based testing of the struct-mapping logic.
+func ListSSMParamsWithAPI(ctx context.Context, api SSMAPI) ([]SSMParam, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
-	svc := ssm.NewFromConfig(c.Config)
-	out, err := svc.DescribeParameters(ctx, &ssm.DescribeParametersInput{})
+
+	out, err := api.DescribeParameters(ctx, &ssm.DescribeParametersInput{})
 	if err != nil {
 		return nil, err
 	}
