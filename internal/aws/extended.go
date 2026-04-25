@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,6 +78,7 @@ func (c *Client) GetAPIResources(ctx context.Context, apiID string) ([]APIResour
 		for m := range r.ResourceMethods {
 			methods = append(methods, m)
 		}
+		sort.Strings(methods)
 		resources = append(resources, APIResource{
 			Path:    aws.ToString(r.Path),
 			Methods: methods,

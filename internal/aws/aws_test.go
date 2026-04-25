@@ -2,6 +2,7 @@ package aws
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -150,13 +151,13 @@ func TestIsAccessDenied(t *testing.T) {
 }
 
 func TestContains(t *testing.T) {
-	if !contains("hello world", "world") {
+	if !strings.Contains("hello world", "world") {
 		t.Error("should find 'world' in 'hello world'")
 	}
-	if contains("hello", "world") {
+	if strings.Contains("hello", "world") {
 		t.Error("should not find 'world' in 'hello'")
 	}
-	if !contains("same", "same") {
+	if !strings.Contains("same", "same") {
 		t.Error("exact match should return true")
 	}
 }
@@ -216,7 +217,7 @@ func TestFormatDeps(t *testing.T) {
 		{From: "myFunc", To: "myTable", Relation: "reads/writes DynamoDB"},
 	}
 	got := FormatDeps(deps)
-	if !containsStr(got, "myFunc") || !containsStr(got, "myTable") {
+	if !strings.Contains(got, "myFunc") || !strings.Contains(got, "myTable") {
 		t.Errorf("FormatDeps missing content: %q", got)
 	}
 	// empty
