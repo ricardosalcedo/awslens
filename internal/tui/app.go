@@ -37,14 +37,14 @@ var (
 type errMsg struct{ err error }
 type writeOKMsg struct{ info string } // successful write, re-fetch list
 type writeErrMsg struct{ err error }  // write failed, show error
-type ec2Msg struct{ instances []awsclient.Instance }
-type lambdaMsg struct{ functions []awsclient.Function }
+type ec2Msg struct{ instances []awsclient.Instance; failedRegions []string }
+type lambdaMsg struct{ functions []awsclient.Function; failedRegions []string }
 type s3Msg struct{ buckets []awsclient.Bucket }
-type rdsMsg struct{ dbs []awsclient.DBInstance }
-type ecsMsg struct{ clusters []awsclient.Cluster }
-type sqsMsg struct{ queues []awsclient.Queue }
-type snsMsg struct{ topics []awsclient.Topic }
-type cfnMsg struct{ stacks []awsclient.Stack }
+type rdsMsg struct{ dbs []awsclient.DBInstance; failedRegions []string }
+type ecsMsg struct{ clusters []awsclient.Cluster; failedRegions []string }
+type sqsMsg struct{ queues []awsclient.Queue; failedRegions []string }
+type snsMsg struct{ topics []awsclient.Topic; failedRegions []string }
+type cfnMsg struct{ stacks []awsclient.Stack; failedRegions []string }
 type costsMsg struct {
 	entries []awsclient.CostEntry
 	total   string
@@ -54,25 +54,25 @@ type costCacheEntry struct {
 	entries []awsclient.CostEntry
 	total   string
 }
-type dynamoMsg struct{ tables []awsclient.DynamoTable }
-type apigwMsg struct{ apis []awsclient.RestAPI }
-type ecrMsg struct{ repos []awsclient.ECRRepo }
-type sfnMsg struct{ machines []awsclient.StateMachine }
-type albMsg struct{ lbs []awsclient.LoadBalancer }
+type dynamoMsg struct{ tables []awsclient.DynamoTable; failedRegions []string }
+type apigwMsg struct{ apis []awsclient.RestAPI; failedRegions []string }
+type ecrMsg struct{ repos []awsclient.ECRRepo; failedRegions []string }
+type sfnMsg struct{ machines []awsclient.StateMachine; failedRegions []string }
+type albMsg struct{ lbs []awsclient.LoadBalancer; failedRegions []string }
 type route53Msg struct{ zones []awsclient.HostedZone }
-type secretsMsg struct{ secrets []awsclient.Secret }
-type ssmMsg struct{ params []awsclient.SSMParam }
-type cwMsg struct{ alarms []awsclient.CWAlarm }
-type cacheMsg struct{ clusters []awsclient.CacheCluster }
-type osMsg struct{ domains []awsclient.OSDomain }
-type mskMsg struct{ clusters []awsclient.MSKCluster }
-type glueMsg struct{ dbs []awsclient.GlueDatabase }
-type athenaMsg struct{ wgs []awsclient.AthenaWorkgroup }
-type codeCommitMsg struct{ repos []awsclient.CodeRepo }
-type codePipelineMsg struct{ pipelines []awsclient.Pipeline }
-type codeBuildMsg struct{ projects []awsclient.BuildProject }
-type ebMsg struct{ rules []awsclient.EBRule }
-type wafMsg struct{ acls []awsclient.WAFWebACL }
+type secretsMsg struct{ secrets []awsclient.Secret; failedRegions []string }
+type ssmMsg struct{ params []awsclient.SSMParam; failedRegions []string }
+type cwMsg struct{ alarms []awsclient.CWAlarm; failedRegions []string }
+type cacheMsg struct{ clusters []awsclient.CacheCluster; failedRegions []string }
+type osMsg struct{ domains []awsclient.OSDomain; failedRegions []string }
+type mskMsg struct{ clusters []awsclient.MSKCluster; failedRegions []string }
+type glueMsg struct{ dbs []awsclient.GlueDatabase; failedRegions []string }
+type athenaMsg struct{ wgs []awsclient.AthenaWorkgroup; failedRegions []string }
+type codeCommitMsg struct{ repos []awsclient.CodeRepo; failedRegions []string }
+type codePipelineMsg struct{ pipelines []awsclient.Pipeline; failedRegions []string }
+type codeBuildMsg struct{ projects []awsclient.BuildProject; failedRegions []string }
+type ebMsg struct{ rules []awsclient.EBRule; failedRegions []string }
+type wafMsg struct{ acls []awsclient.WAFWebACL; failedRegions []string }
 type securityMsg struct{ findings []awsclient.SecurityFinding }
 type switchProfileMsg struct{ profile, region string }
 type insightMsg struct{ text string }
@@ -170,6 +170,7 @@ type model struct {
 	loading bool
 	spinner spinner.Model
 	err     error
+	regionWarning string // non-empty when some regions failed during scan
 	probing bool   // true while running access probe
 	access  map[string]bool // nil = not probed yet
 	backToPicker bool
@@ -386,27 +387,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ec2Msg:
 		m.loading = false
 		m.instances = msg.instances
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case lambdaMsg:
 		m.loading = false
 		m.functions = msg.functions
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case s3Msg:
 		m.loading = false
 		m.buckets = msg.buckets
 	case rdsMsg:
 		m.loading = false
 		m.dbs = msg.dbs
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case ecsMsg:
 		m.loading = false
 		m.clusters = msg.clusters
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case sqsMsg:
 		m.loading = false
 		m.queues = msg.queues
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case snsMsg:
 		m.loading = false
 		m.topics = msg.topics
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case cfnMsg:
 		m.loading = false
 		m.stacks = msg.stacks
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case costsMsg:
 		m.loading = false
 		m.costs = msg.entries
@@ -418,60 +426,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dynamoMsg:
 		m.loading = false
 		m.tables = msg.tables
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case apigwMsg:
 		m.loading = false
 		m.apis = msg.apis
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case ecrMsg:
 		m.loading = false
 		m.repos = msg.repos
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case sfnMsg:
 		m.loading = false
 		m.machines = msg.machines
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case albMsg:
 		m.loading = false
 		m.lbs = msg.lbs
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case route53Msg:
 		m.loading = false
 		m.zones = msg.zones
 	case secretsMsg:
 		m.loading = false
 		m.secrets = msg.secrets
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case ssmMsg:
 		m.loading = false
 		m.params = msg.params
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case cwMsg:
 		m.loading = false
 		m.alarms = msg.alarms
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case cacheMsg:
 		m.loading = false
 		m.cacheClusters = msg.clusters
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case osMsg:
 		m.loading = false
 		m.osDomains = msg.domains
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case mskMsg:
 		m.loading = false
 		m.mskClusters = msg.clusters
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case glueMsg:
 		m.loading = false
 		m.glueDbs = msg.dbs
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case athenaMsg:
 		m.loading = false
 		m.athenaWGs = msg.wgs
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case codeCommitMsg:
 		m.loading = false
 		m.codeRepos = msg.repos
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case codePipelineMsg:
 		m.loading = false
 		m.pipelines = msg.pipelines
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case codeBuildMsg:
 		m.loading = false
 		m.buildProjects = msg.projects
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case ebMsg:
 		m.loading = false
 		m.ebRules = msg.rules
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case wafMsg:
 		m.loading = false
 		m.wafACLs = msg.acls
+		m.regionWarning = formatRegionWarning(msg.failedRegions)
 	case securityMsg:
 		m.loading = false
 		m.secFindings = msg.findings
@@ -616,6 +642,7 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		m.cursor = 0
 		m.scroll = 0
 		m.err = nil
+		m.regionWarning = ""
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -836,17 +863,18 @@ func (m model) reloadService() (model, tea.Cmd) {
 	m.scroll = 0
 	m.loading = true
 	m.err = nil
+	m.regionWarning = ""
 	client := m.client
 	switch m.current {
 	case viewEC2:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsInstances(context.Background(), client)
-			return ec2Msg{data}
+			data, failed := awsclient.AllRegionsInstances(context.Background(), client)
+			return ec2Msg{data, failed}
 		}
 	case viewLambda:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsFunctions(context.Background(), client)
-			return lambdaMsg{data}
+			data, failed := awsclient.AllRegionsFunctions(context.Background(), client)
+			return lambdaMsg{data, failed}
 		}
 	case viewS3:
 		return m, func() tea.Msg {
@@ -856,28 +884,28 @@ func (m model) reloadService() (model, tea.Cmd) {
 		}
 	case viewRDS:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsDBInstances(context.Background(), client)
-			return rdsMsg{data}
+			data, failed := awsclient.AllRegionsDBInstances(context.Background(), client)
+			return rdsMsg{data, failed}
 		}
 	case viewECS:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsClusters(context.Background(), client)
-			return ecsMsg{data}
+			data, failed := awsclient.AllRegionsClusters(context.Background(), client)
+			return ecsMsg{data, failed}
 		}
 	case viewSQS:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsQueues(context.Background(), client)
-			return sqsMsg{data}
+			data, failed := awsclient.AllRegionsQueues(context.Background(), client)
+			return sqsMsg{data, failed}
 		}
 	case viewSNS:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsTopics(context.Background(), client)
-			return snsMsg{data}
+			data, failed := awsclient.AllRegionsTopics(context.Background(), client)
+			return snsMsg{data, failed}
 		}
 	case viewCFN:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsStacks(context.Background(), client)
-			return cfnMsg{data}
+			data, failed := awsclient.AllRegionsStacks(context.Background(), client)
+			return cfnMsg{data, failed}
 		}
 	case viewCosts:
 		return m, func() tea.Msg {
@@ -887,28 +915,28 @@ func (m model) reloadService() (model, tea.Cmd) {
 		}
 	case viewDynamo:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsDynamoTables(context.Background(), client)
-			return dynamoMsg{data}
+			data, failed := awsclient.AllRegionsDynamoTables(context.Background(), client)
+			return dynamoMsg{data, failed}
 		}
 	case viewAPIGW:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsRestAPIs(context.Background(), client)
-			return apigwMsg{data}
+			data, failed := awsclient.AllRegionsRestAPIs(context.Background(), client)
+			return apigwMsg{data, failed}
 		}
 	case viewECR:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsECRRepos(context.Background(), client)
-			return ecrMsg{data}
+			data, failed := awsclient.AllRegionsECRRepos(context.Background(), client)
+			return ecrMsg{data, failed}
 		}
 	case viewSFN:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsStateMachines(context.Background(), client)
-			return sfnMsg{data}
+			data, failed := awsclient.AllRegionsStateMachines(context.Background(), client)
+			return sfnMsg{data, failed}
 		}
 	case viewALB:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsLoadBalancers(context.Background(), client)
-			return albMsg{data}
+			data, failed := awsclient.AllRegionsLoadBalancers(context.Background(), client)
+			return albMsg{data, failed}
 		}
 	case viewRoute53:
 		return m, func() tea.Msg {
@@ -918,58 +946,68 @@ func (m model) reloadService() (model, tea.Cmd) {
 		}
 	case viewSecrets:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsSecrets(context.Background(), client)
-			return secretsMsg{data}
+			data, failed := awsclient.AllRegionsSecrets(context.Background(), client)
+			return secretsMsg{data, failed}
 		}
 	case viewSSM:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsSSMParams(context.Background(), client)
-			return ssmMsg{data}
+			data, failed := awsclient.AllRegionsSSMParams(context.Background(), client)
+			return ssmMsg{data, failed}
 		}
 	case viewCW:
 		return m, func() tea.Msg {
-			data := awsclient.AllRegionsAlarms(context.Background(), client)
-			return cwMsg{data}
+			data, failed := awsclient.AllRegionsAlarms(context.Background(), client)
+			return cwMsg{data, failed}
 		}
 	case viewElastiCache:
 		return m, func() tea.Msg {
-			return cacheMsg{awsclient.AllRegionsCacheClusters(context.Background(), client)}
+			data, failed := awsclient.AllRegionsCacheClusters(context.Background(), client)
+			return cacheMsg{data, failed}
 		}
 	case viewOpenSearch:
 		return m, func() tea.Msg {
-			return osMsg{awsclient.AllRegionsOSDomains(context.Background(), client)}
+			data, failed := awsclient.AllRegionsOSDomains(context.Background(), client)
+			return osMsg{data, failed}
 		}
 	case viewMSK:
 		return m, func() tea.Msg {
-			return mskMsg{awsclient.AllRegionsMSKClusters(context.Background(), client)}
+			data, failed := awsclient.AllRegionsMSKClusters(context.Background(), client)
+			return mskMsg{data, failed}
 		}
 	case viewGlue:
 		return m, func() tea.Msg {
-			return glueMsg{awsclient.AllRegionsGlueDatabases(context.Background(), client)}
+			data, failed := awsclient.AllRegionsGlueDatabases(context.Background(), client)
+			return glueMsg{data, failed}
 		}
 	case viewAthena:
 		return m, func() tea.Msg {
-			return athenaMsg{awsclient.AllRegionsAthenaWorkgroups(context.Background(), client)}
+			data, failed := awsclient.AllRegionsAthenaWorkgroups(context.Background(), client)
+			return athenaMsg{data, failed}
 		}
 	case viewCodeCommit:
 		return m, func() tea.Msg {
-			return codeCommitMsg{awsclient.AllRegionsCodeRepos(context.Background(), client)}
+			data, failed := awsclient.AllRegionsCodeRepos(context.Background(), client)
+			return codeCommitMsg{data, failed}
 		}
 	case viewCodePipeline:
 		return m, func() tea.Msg {
-			return codePipelineMsg{awsclient.AllRegionsPipelines(context.Background(), client)}
+			data, failed := awsclient.AllRegionsPipelines(context.Background(), client)
+			return codePipelineMsg{data, failed}
 		}
 	case viewCodeBuild:
 		return m, func() tea.Msg {
-			return codeBuildMsg{awsclient.AllRegionsBuildProjects(context.Background(), client)}
+			data, failed := awsclient.AllRegionsBuildProjects(context.Background(), client)
+			return codeBuildMsg{data, failed}
 		}
 	case viewEventBridge:
 		return m, func() tea.Msg {
-			return ebMsg{awsclient.AllRegionsEBRules(context.Background(), client)}
+			data, failed := awsclient.AllRegionsEBRules(context.Background(), client)
+			return ebMsg{data, failed}
 		}
 	case viewWAF:
 		return m, func() tea.Msg {
-			return wafMsg{awsclient.AllRegionsWAFWebACLs(context.Background(), client)}
+			data, failed := awsclient.AllRegionsWAFWebACLs(context.Background(), client)
+			return wafMsg{data, failed}
 		}
 	case viewSecurity:
 		return m, func() tea.Msg {
@@ -1257,6 +1295,13 @@ func (m model) serviceStat(v view) string {
 	return ""
 }
 
+func formatRegionWarning(failed []string) string {
+	if len(failed) == 0 {
+		return ""
+	}
+	return "⚠ " + strings.Join(failed, ", ") + " failed"
+}
+
 func (m model) serviceView() string {
 	if m.loading {
 		return warnStyle.Render("  " + m.spinner.View() + "  Scanning all regions...")
@@ -1264,67 +1309,71 @@ func (m model) serviceView() string {
 	if m.err != nil {
 		return errorStyle.Render("  " + friendlyErr(m.err))
 	}
+	var view string
 	switch m.current {
 	case viewEC2:
-		return m.ec2View()
+		view = m.ec2View()
 	case viewLambda:
-		return m.lambdaView()
+		view = m.lambdaView()
 	case viewS3:
-		return m.s3View()
+		view = m.s3View()
 	case viewRDS:
-		return m.rdsView()
+		view = m.rdsView()
 	case viewECS:
-		return m.ecsView()
+		view = m.ecsView()
 	case viewSQS:
-		return m.sqsView()
+		view = m.sqsView()
 	case viewSNS:
-		return m.snsView()
+		view = m.snsView()
 	case viewCFN:
-		return m.cfnView()
+		view = m.cfnView()
 	case viewCosts:
-		return m.costsView()
+		view = m.costsView()
 	case viewDynamo:
-		return m.dynamoView()
+		view = m.dynamoView()
 	case viewAPIGW:
-		return m.apigwView()
+		view = m.apigwView()
 	case viewECR:
-		return m.ecrView()
+		view = m.ecrView()
 	case viewSFN:
-		return m.sfnView()
+		view = m.sfnView()
 	case viewALB:
-		return m.albView()
+		view = m.albView()
 	case viewRoute53:
-		return m.route53View()
+		view = m.route53View()
 	case viewSecrets:
-		return m.secretsView()
+		view = m.secretsView()
 	case viewSSM:
-		return m.ssmView()
+		view = m.ssmView()
 	case viewCW:
-		return m.cwView()
+		view = m.cwView()
 	case viewElastiCache:
-		return m.elastiCacheView()
+		view = m.elastiCacheView()
 	case viewOpenSearch:
-		return m.openSearchView()
+		view = m.openSearchView()
 	case viewMSK:
-		return m.mskView()
+		view = m.mskView()
 	case viewGlue:
-		return m.glueView()
+		view = m.glueView()
 	case viewAthena:
-		return m.athenaView()
+		view = m.athenaView()
 	case viewCodeCommit:
-		return m.codeCommitView()
+		view = m.codeCommitView()
 	case viewCodePipeline:
-		return m.codePipelineView()
+		view = m.codePipelineView()
 	case viewCodeBuild:
-		return m.codeBuildView()
+		view = m.codeBuildView()
 	case viewEventBridge:
-		return m.eventBridgeView()
+		view = m.eventBridgeView()
 	case viewWAF:
-		return m.wafView()
+		view = m.wafView()
 	case viewSecurity:
-		return m.securityView()
+		view = m.securityView()
 	}
-	return ""
+	if m.regionWarning != "" {
+		view = warnStyle.Render("  "+m.regionWarning) + "\n" + view
+	}
+	return view
 }
 
 func stateColor(state string) string {

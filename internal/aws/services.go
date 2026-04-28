@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -456,119 +457,125 @@ type RegionResult[T any] struct {
 	Err    error
 }
 
-func AllRegionsInstances(ctx context.Context, c *Client) []Instance {
+func AllRegionsInstances(ctx context.Context, c *Client) ([]Instance, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Instance, error) {
 		return rc.ListInstances(ctx)
 	})
 }
 
-func AllRegionsFunctions(ctx context.Context, c *Client) []Function {
+func AllRegionsFunctions(ctx context.Context, c *Client) ([]Function, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Function, error) {
 		return rc.ListFunctions(ctx)
 	})
 }
 
-func AllRegionsDynamoTables(ctx context.Context, c *Client) []DynamoTable {
+func AllRegionsDynamoTables(ctx context.Context, c *Client) ([]DynamoTable, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]DynamoTable, error) {
 		return rc.ListDynamoTables(ctx)
 	})
 }
 
-func AllRegionsRestAPIs(ctx context.Context, c *Client) []RestAPI {
+func AllRegionsRestAPIs(ctx context.Context, c *Client) ([]RestAPI, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]RestAPI, error) {
 		return rc.ListRestAPIs(ctx)
 	})
 }
 
-func AllRegionsStacks(ctx context.Context, c *Client) []Stack {
+func AllRegionsStacks(ctx context.Context, c *Client) ([]Stack, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Stack, error) {
 		return rc.ListStacks(ctx)
 	})
 }
 
-func AllRegionsAlarms(ctx context.Context, c *Client) []CWAlarm {
+func AllRegionsAlarms(ctx context.Context, c *Client) ([]CWAlarm, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]CWAlarm, error) {
 		return rc.ListAlarms(ctx)
 	})
 }
 
-func AllRegionsStateMachines(ctx context.Context, c *Client) []StateMachine {
+func AllRegionsStateMachines(ctx context.Context, c *Client) ([]StateMachine, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]StateMachine, error) {
 		return rc.ListStateMachines(ctx)
 	})
 }
 
-func AllRegionsECRRepos(ctx context.Context, c *Client) []ECRRepo {
+func AllRegionsECRRepos(ctx context.Context, c *Client) ([]ECRRepo, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]ECRRepo, error) {
 		return rc.ListECRRepos(ctx)
 	})
 }
 
-func AllRegionsLoadBalancers(ctx context.Context, c *Client) []LoadBalancer {
+func AllRegionsLoadBalancers(ctx context.Context, c *Client) ([]LoadBalancer, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]LoadBalancer, error) {
 		return rc.ListLoadBalancers(ctx)
 	})
 }
 
-func AllRegionsQueues(ctx context.Context, c *Client) []Queue {
+func AllRegionsQueues(ctx context.Context, c *Client) ([]Queue, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Queue, error) {
 		return rc.ListQueues(ctx)
 	})
 }
 
-func AllRegionsTopics(ctx context.Context, c *Client) []Topic {
+func AllRegionsTopics(ctx context.Context, c *Client) ([]Topic, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Topic, error) {
 		return rc.ListTopics(ctx)
 	})
 }
 
-func AllRegionsDBInstances(ctx context.Context, c *Client) []DBInstance {
+func AllRegionsDBInstances(ctx context.Context, c *Client) ([]DBInstance, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]DBInstance, error) {
 		return rc.ListDBInstances(ctx)
 	})
 }
 
-func AllRegionsClusters(ctx context.Context, c *Client) []Cluster {
+func AllRegionsClusters(ctx context.Context, c *Client) ([]Cluster, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Cluster, error) {
 		return rc.ListClusters(ctx)
 	})
 }
 
-func AllRegionsSSMParams(ctx context.Context, c *Client) []SSMParam {
+func AllRegionsSSMParams(ctx context.Context, c *Client) ([]SSMParam, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]SSMParam, error) {
 		return rc.ListSSMParams(ctx)
 	})
 }
 
-func AllRegionsSecrets(ctx context.Context, c *Client) []Secret {
+func AllRegionsSecrets(ctx context.Context, c *Client) ([]Secret, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Secret, error) {
 		return rc.ListSecrets(ctx)
 	})
 }
 
 // aggregateRegions fans out a fetch function across all common regions in parallel
-// and merges results, silently ignoring regions with no resources or errors.
-func aggregateRegions[T any](ctx context.Context, c *Client, fn func(context.Context, *Client) ([]T, error)) []T {
+// and merges results. Returns partial results along with a list of regions that failed.
+func aggregateRegions[T any](ctx context.Context, c *Client, fn func(context.Context, *Client) ([]T, error)) ([]T, []string) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	type result struct{ items []T }
+	type result struct {
+		region string
+		items  []T
+		err    error
+	}
 	ch := make(chan result, len(CommonRegions))
 	for _, r := range CommonRegions {
 		r := r
 		go func() {
 			rc := c.NewForRegion(r)
 			items, err := fn(ctx, rc)
-			if err != nil || len(items) == 0 {
-				ch <- result{}
-				return
-			}
-			ch <- result{items}
+			ch <- result{region: r, items: items, err: err}
 		}()
 	}
 	var all []T
+	var failed []string
 	for range CommonRegions {
 		r := <-ch
+		if r.err != nil {
+			failed = append(failed, r.region)
+			continue
+		}
 		all = append(all, r.items...)
 	}
-	return all
+	sort.Strings(failed)
+	return all, failed
 }

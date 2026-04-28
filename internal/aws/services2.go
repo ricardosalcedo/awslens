@@ -510,61 +510,61 @@ func (c *Client) ListWAFWebACLs(ctx context.Context) ([]WAFWebACL, error) {
 
 // ── Multi-region wrappers ─────────────────────────────────────────────────────
 
-func AllRegionsCacheClusters(ctx context.Context, c *Client) []CacheCluster {
+func AllRegionsCacheClusters(ctx context.Context, c *Client) ([]CacheCluster, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]CacheCluster, error) {
 		return rc.ListCacheClusters(ctx)
 	})
 }
 
-func AllRegionsOSDomains(ctx context.Context, c *Client) []OSDomain {
+func AllRegionsOSDomains(ctx context.Context, c *Client) ([]OSDomain, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]OSDomain, error) {
 		return rc.ListOSDomains(ctx)
 	})
 }
 
-func AllRegionsMSKClusters(ctx context.Context, c *Client) []MSKCluster {
+func AllRegionsMSKClusters(ctx context.Context, c *Client) ([]MSKCluster, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]MSKCluster, error) {
 		return rc.ListMSKClusters(ctx)
 	})
 }
 
-func AllRegionsGlueDatabases(ctx context.Context, c *Client) []GlueDatabase {
+func AllRegionsGlueDatabases(ctx context.Context, c *Client) ([]GlueDatabase, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]GlueDatabase, error) {
 		return rc.ListGlueDatabases(ctx)
 	})
 }
 
-func AllRegionsAthenaWorkgroups(ctx context.Context, c *Client) []AthenaWorkgroup {
+func AllRegionsAthenaWorkgroups(ctx context.Context, c *Client) ([]AthenaWorkgroup, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]AthenaWorkgroup, error) {
 		return rc.ListAthenaWorkgroups(ctx)
 	})
 }
 
-func AllRegionsCodeRepos(ctx context.Context, c *Client) []CodeRepo {
+func AllRegionsCodeRepos(ctx context.Context, c *Client) ([]CodeRepo, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]CodeRepo, error) {
 		return rc.ListCodeRepos(ctx)
 	})
 }
 
-func AllRegionsPipelines(ctx context.Context, c *Client) []Pipeline {
+func AllRegionsPipelines(ctx context.Context, c *Client) ([]Pipeline, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]Pipeline, error) {
 		return rc.ListPipelines(ctx)
 	})
 }
 
-func AllRegionsBuildProjects(ctx context.Context, c *Client) []BuildProject {
+func AllRegionsBuildProjects(ctx context.Context, c *Client) ([]BuildProject, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]BuildProject, error) {
 		return rc.ListBuildProjects(ctx)
 	})
 }
 
-func AllRegionsEBRules(ctx context.Context, c *Client) []EBRule {
+func AllRegionsEBRules(ctx context.Context, c *Client) ([]EBRule, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]EBRule, error) {
 		return rc.ListEBRules(ctx)
 	})
 }
 
-func AllRegionsWAFWebACLs(ctx context.Context, c *Client) []WAFWebACL {
+func AllRegionsWAFWebACLs(ctx context.Context, c *Client) ([]WAFWebACL, []string) {
 	return aggregateRegions(ctx, c, func(ctx context.Context, rc *Client) ([]WAFWebACL, error) {
 		return rc.ListWAFWebACLs(ctx)
 	})
