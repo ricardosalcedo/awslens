@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -547,27 +548,32 @@ func AllRegionsSecrets(ctx context.Context, c *Client) []Secret {
 }
 
 // aggregateRegions fans out a fetch function across all common regions in parallel
-// and merges results, silently ignoring regions with no resources or errors.
+// and merges results. Regions that return errors are logged at debug level via
+// log/slog so they can be diagnosed with --debug.
 func aggregateRegions[T any](ctx context.Context, c *Client, fn func(context.Context, *Client) ([]T, error)) []T {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	type result struct{ items []T }
+	type result struct {
+		region string
+		items  []T
+		err    error
+	}
 	ch := make(chan result, len(CommonRegions))
 	for _, r := range CommonRegions {
 		r := r
 		go func() {
 			rc := c.NewForRegion(r)
 			items, err := fn(ctx, rc)
-			if err != nil || len(items) == 0 {
-				ch <- result{}
-				return
-			}
-			ch <- result{items}
+			ch <- result{region: r, items: items, err: err}
 		}()
 	}
 	var all []T
 	for range CommonRegions {
 		r := <-ch
+		if r.err != nil {
+			slog.Debug("region fetch failed", "region", r.region, "error", r.err)
+			continue
+		}
 		all = append(all, r.items...)
 	}
 	return all
