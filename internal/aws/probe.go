@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -174,6 +175,9 @@ func (c *Client) ProbeAccess(ctx context.Context) map[string]bool {
 			defer wg.Done()
 			err := probe()
 			allowed := err == nil || isNotFoundErr(err) || !isAccessDenied(err)
+			if err != nil {
+				slog.Debug("probe access", "service", name, "allowed", allowed, "error", err)
+			}
 			mu.Lock()
 			results[name] = allowed
 			mu.Unlock()

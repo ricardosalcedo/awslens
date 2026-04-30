@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,6 +43,7 @@ func (c *Client) auditSecurityGroups(ctx context.Context) []SecurityFinding {
 	svc := ec2.NewFromConfig(c.Config)
 	out, err := svc.DescribeSecurityGroups(ctx, nil)
 	if err != nil {
+		slog.Debug("security audit: security groups", "error", err)
 		return nil
 	}
 	for _, sg := range out.SecurityGroups {
@@ -76,6 +78,7 @@ func (c *Client) auditS3Buckets(ctx context.Context) []SecurityFinding {
 	svc := s3.NewFromConfig(c.Config)
 	buckets, err := svc.ListBuckets(ctx, nil)
 	if err != nil {
+		slog.Debug("security audit: s3 buckets", "error", err)
 		return nil
 	}
 	for _, b := range buckets.Buckets {
@@ -129,6 +132,7 @@ func (c *Client) auditIAMUsers(ctx context.Context) []SecurityFinding {
 	svc := iam.NewFromConfig(c.Config)
 	users, err := svc.ListUsers(ctx, nil)
 	if err != nil {
+		slog.Debug("security audit: iam users", "error", err)
 		return nil
 	}
 	for _, u := range users.Users {
@@ -166,6 +170,7 @@ func (c *Client) auditRootAccount(ctx context.Context) []SecurityFinding {
 	svc := iam.NewFromConfig(c.Config)
 	summary, err := svc.GetAccountSummary(ctx, nil)
 	if err != nil {
+		slog.Debug("security audit: root account", "error", err)
 		return nil
 	}
 	if v, ok := summary.SummaryMap["AccountMFAEnabled"]; ok && v == 0 {

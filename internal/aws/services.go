@@ -187,6 +187,8 @@ func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
 			if bucket.Region == "" {
 				bucket.Region = "us-east-1"
 			}
+		} else {
+			slog.Debug("s3 GetBucketLocation failed", "bucket", bucket.Name, "error", err)
 		}
 		buckets = append(buckets, bucket)
 	}
