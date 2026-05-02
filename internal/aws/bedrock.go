@@ -2,9 +2,10 @@ package aws
 
 import (
 	"context"
-	"time"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 )
@@ -30,7 +31,7 @@ type bedrockResponse struct {
 func (c *Client) GetInsight(ctx context.Context, resourceSummary string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	body, _ := json.Marshal(bedrockRequest{
+	body, err := json.Marshal(bedrockRequest{
 		AnthropicVersion: "bedrock-2023-05-31",
 		MaxTokens:        400,
 		System: `You are an expert AWS operations advisor. Given a resource config and its real operational data (metrics, errors, dependencies), provide a structured analysis:
@@ -45,6 +46,10 @@ Be direct. Use the actual numbers from the metrics. No generic advice — only i
 			{Role: "user", Content: resourceSummary},
 		},
 	})
+	if err != nil {
+		slog.Debug("bedrock: marshal request failed", "error", err)
+		return "", fmt.Errorf("bedrock: marshal request: %w", err)
+	}
 
 	svc := bedrockruntime.NewFromConfig(c.Config)
 	out, err := svc.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
@@ -53,11 +58,13 @@ Be direct. Use the actual numbers from the metrics. No generic advice — only i
 		Body:        body,
 	})
 	if err != nil {
+		slog.Debug("bedrock: InvokeModel failed", "error", err)
 		return "", fmt.Errorf("bedrock: %w", err)
 	}
 
 	var resp bedrockResponse
 	if err := json.Unmarshal(out.Body, &resp); err != nil {
+		slog.Debug("bedrock: unmarshal response failed", "error", err)
 		return "", fmt.Errorf("bedrock: bad response: %w", err)
 	}
 	if len(resp.Content) == 0 {

@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -126,14 +127,20 @@ func fmtMetric(m *MetricSummary, unit string) string {
 func (c *Client) EnrichEC2(ctx context.Context, instanceID string) *EnrichContext {
 	e := &EnrichContext{}
 	ns, dim := "AWS/EC2", "InstanceId"
-	if m, _ := c.GetMetricSummary(ctx, ns, "CPUUtilization", dim, instanceID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "CPUUtilization", dim, instanceID); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, "%"))
+	} else if err != nil {
+		slog.Debug("enrich ec2: metric fetch failed", "instance", instanceID, "metric", "CPUUtilization", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "NetworkIn", dim, instanceID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "NetworkIn", dim, instanceID); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, " bytes"))
+	} else if err != nil {
+		slog.Debug("enrich ec2: metric fetch failed", "instance", instanceID, "metric", "NetworkIn", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "StatusCheckFailed", dim, instanceID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "StatusCheckFailed", dim, instanceID); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich ec2: metric fetch failed", "instance", instanceID, "metric", "StatusCheckFailed", "error", err)
 	}
 	return e
 }
@@ -142,25 +149,35 @@ func (c *Client) EnrichEC2(ctx context.Context, instanceID string) *EnrichContex
 func (c *Client) EnrichLambda(ctx context.Context, funcName string) *EnrichContext {
 	e := &EnrichContext{}
 	ns, dim := "AWS/Lambda", "FunctionName"
-	if m, _ := c.GetMetricSummary(ctx, ns, "Invocations", dim, funcName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "Invocations", dim, funcName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
 		if m.Sum == 0 {
 			e.Extra = append(e.Extra, "Function has NOT been invoked in the last 7 days")
 		}
+	} else if err != nil {
+		slog.Debug("enrich lambda: metric fetch failed", "function", funcName, "metric", "Invocations", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "Errors", dim, funcName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "Errors", dim, funcName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich lambda: metric fetch failed", "function", funcName, "metric", "Errors", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "Duration", dim, funcName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "Duration", dim, funcName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, "ms"))
+	} else if err != nil {
+		slog.Debug("enrich lambda: metric fetch failed", "function", funcName, "metric", "Duration", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "Throttles", dim, funcName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "Throttles", dim, funcName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich lambda: metric fetch failed", "function", funcName, "metric", "Throttles", "error", err)
 	}
 	// recent errors from logs
 	logGroup := fmt.Sprintf("/aws/lambda/%s", funcName)
-	if errs, _ := c.GetRecentErrors(ctx, logGroup, 5); len(errs) > 0 {
+	if errs, err := c.GetRecentErrors(ctx, logGroup, 5); len(errs) > 0 {
 		e.Errors = errs
+	} else if err != nil {
+		slog.Debug("enrich lambda: log fetch failed", "function", funcName, "logGroup", logGroup, "error", err)
 	}
 	// dependencies
 	if deps := c.GetLambdaDeps(ctx, funcName); len(deps) > 0 {
@@ -175,14 +192,20 @@ func (c *Client) EnrichLambda(ctx context.Context, funcName string) *EnrichConte
 func (c *Client) EnrichRDS(ctx context.Context, dbID string) *EnrichContext {
 	e := &EnrichContext{}
 	ns, dim := "AWS/RDS", "DBInstanceIdentifier"
-	if m, _ := c.GetMetricSummary(ctx, ns, "CPUUtilization", dim, dbID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "CPUUtilization", dim, dbID); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, "%"))
+	} else if err != nil {
+		slog.Debug("enrich rds: metric fetch failed", "db", dbID, "metric", "CPUUtilization", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "DatabaseConnections", dim, dbID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "DatabaseConnections", dim, dbID); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich rds: metric fetch failed", "db", dbID, "metric", "DatabaseConnections", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "FreeStorageSpace", dim, dbID); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "FreeStorageSpace", dim, dbID); m != nil {
 		e.Metrics = append(e.Metrics, fmt.Sprintf("FreeStorageSpace: %.0f GB", m.Avg/1073741824))
+	} else if err != nil {
+		slog.Debug("enrich rds: metric fetch failed", "db", dbID, "metric", "FreeStorageSpace", "error", err)
 	}
 	return e
 }
@@ -191,14 +214,20 @@ func (c *Client) EnrichRDS(ctx context.Context, dbID string) *EnrichContext {
 func (c *Client) EnrichSQS(ctx context.Context, queueName string) *EnrichContext {
 	e := &EnrichContext{}
 	ns, dim := "AWS/SQS", "QueueName"
-	if m, _ := c.GetMetricSummary(ctx, ns, "ApproximateNumberOfMessagesVisible", dim, queueName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "ApproximateNumberOfMessagesVisible", dim, queueName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich sqs: metric fetch failed", "queue", queueName, "metric", "ApproximateNumberOfMessagesVisible", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "ApproximateAgeOfOldestMessage", dim, queueName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "ApproximateAgeOfOldestMessage", dim, queueName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, "s"))
+	} else if err != nil {
+		slog.Debug("enrich sqs: metric fetch failed", "queue", queueName, "metric", "ApproximateAgeOfOldestMessage", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "NumberOfMessagesSent", dim, queueName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "NumberOfMessagesSent", dim, queueName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich sqs: metric fetch failed", "queue", queueName, "metric", "NumberOfMessagesSent", "error", err)
 	}
 	return e
 }
@@ -207,14 +236,20 @@ func (c *Client) EnrichSQS(ctx context.Context, queueName string) *EnrichContext
 func (c *Client) EnrichDynamo(ctx context.Context, tableName string) *EnrichContext {
 	e := &EnrichContext{}
 	ns, dim := "AWS/DynamoDB", "TableName"
-	if m, _ := c.GetMetricSummary(ctx, ns, "ConsumedReadCapacityUnits", dim, tableName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "ConsumedReadCapacityUnits", dim, tableName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich dynamo: metric fetch failed", "table", tableName, "metric", "ConsumedReadCapacityUnits", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "ConsumedWriteCapacityUnits", dim, tableName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "ConsumedWriteCapacityUnits", dim, tableName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich dynamo: metric fetch failed", "table", tableName, "metric", "ConsumedWriteCapacityUnits", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "ThrottledRequests", dim, tableName); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "ThrottledRequests", dim, tableName); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich dynamo: metric fetch failed", "table", tableName, "metric", "ThrottledRequests", "error", err)
 	}
 	return e
 }
@@ -228,14 +263,20 @@ func (c *Client) EnrichALB(ctx context.Context, lbArn string) *EnrichContext {
 		dimVal = lbArn[idx:]
 	}
 	ns, dim := "AWS/ApplicationELB", "LoadBalancer"
-	if m, _ := c.GetMetricSummary(ctx, ns, "RequestCount", dim, dimVal); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "RequestCount", dim, dimVal); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich alb: metric fetch failed", "lb", lbArn, "metric", "RequestCount", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "TargetResponseTime", dim, dimVal); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "TargetResponseTime", dim, dimVal); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, "s"))
+	} else if err != nil {
+		slog.Debug("enrich alb: metric fetch failed", "lb", lbArn, "metric", "TargetResponseTime", "error", err)
 	}
-	if m, _ := c.GetMetricSummary(ctx, ns, "HTTPCode_ELB_5XX_Count", dim, dimVal); m != nil {
+	if m, err := c.GetMetricSummary(ctx, ns, "HTTPCode_ELB_5XX_Count", dim, dimVal); m != nil {
 		e.Metrics = append(e.Metrics, fmtMetric(m, ""))
+	} else if err != nil {
+		slog.Debug("enrich alb: metric fetch failed", "lb", lbArn, "metric", "HTTPCode_ELB_5XX_Count", "error", err)
 	}
 	return e
 }

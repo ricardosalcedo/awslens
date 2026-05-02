@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -129,6 +130,7 @@ func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
 		for _, name := range out.TableNames {
 			desc, err := svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(name)})
 			if err != nil {
+				slog.Debug("ListDynamoTables: DescribeTable failed", "table", name, "error", err)
 				tables = append(tables, DynamoTable{Name: name})
 				continue
 			}

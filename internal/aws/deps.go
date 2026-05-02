@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ func (c *Client) GetLambdaDeps(ctx context.Context, name string) []Dependency {
 	svc := lambda.NewFromConfig(c.Config)
 	out, err := svc.GetFunction(ctx, &lambda.GetFunctionInput{FunctionName: aws.String(name)})
 	if err != nil {
+		slog.Debug("GetLambdaDeps: GetFunction failed", "function", name, "error", err)
 		return nil
 	}
 
@@ -61,6 +63,8 @@ func (c *Client) GetLambdaDeps(ctx context.Context, name string) []Dependency {
 			src := aws.ToString(m.EventSourceArn)
 			deps = append(deps, Dependency{extractName(src), fnName, "triggers"})
 		}
+	} else {
+		slog.Debug("GetLambdaDeps: ListEventSourceMappings failed", "function", name, "error", err)
 	}
 
 	// role
