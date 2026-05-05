@@ -225,9 +225,11 @@ func (c *Client) ListLoadBalancers(ctx context.Context) ([]LoadBalancer, error) 
 			Name:   aws.ToString(lb.LoadBalancerName),
 			Type:   string(lb.Type),
 			Scheme: string(lb.Scheme),
-			State:  string(lb.State.Code),
 			DNS:    aws.ToString(lb.DNSName),
 			VPC:    aws.ToString(lb.VpcId),
+		}
+		if lb.State != nil {
+			l.State = string(lb.State.Code)
 		}
 		if lb.CreatedTime != nil {
 			l.Created = lb.CreatedTime.Format("2006-01-02")
@@ -368,12 +370,15 @@ func (c *Client) ListHostedZones(ctx context.Context) ([]HostedZone, error) {
 	}
 	var zones []HostedZone
 	for _, z := range out.HostedZones {
-		zones = append(zones, HostedZone{
+		hz := HostedZone{
 			ID:      aws.ToString(z.Id),
 			Name:    aws.ToString(z.Name),
-			Private: z.Config.PrivateZone,
 			Records: aws.ToInt64(z.ResourceRecordSetCount),
-		})
+		}
+		if z.Config != nil {
+			hz.Private = z.Config.PrivateZone
+		}
+		zones = append(zones, hz)
 	}
 	return zones, nil
 }
@@ -435,14 +440,16 @@ func (c *Client) ListECRRepos(ctx context.Context) ([]ECRRepo, error) {
 	var repos []ECRRepo
 	for _, r := range out.Repositories {
 		repo := ECRRepo{
-			Name:       aws.ToString(r.RepositoryName),
-			URI:        aws.ToString(r.RepositoryUri),
-			ScanOnPush: r.ImageScanningConfiguration.ScanOnPush,
+			Name:   aws.ToString(r.RepositoryName),
+			URI:    aws.ToString(r.RepositoryUri),
+			Region: c.Region,
+		}
+		if r.ImageScanningConfiguration != nil {
+			repo.ScanOnPush = r.ImageScanningConfiguration.ScanOnPush
 		}
 		if r.CreatedAt != nil {
 			repo.Created = r.CreatedAt.Format("2006-01-02")
 		}
-		repo.Region = c.Region
 		repos = append(repos, repo)
 	}
 	return repos, nil

@@ -48,10 +48,14 @@ func (c *Client) ListInstances(ctx context.Context) ([]Instance, error) {
 		for _, i := range r.Instances {
 			inst := Instance{
 				ID:     aws.ToString(i.InstanceId),
-				State:  string(i.State.Name),
 				Type:   string(i.InstanceType),
-				AZ:     aws.ToString(i.Placement.AvailabilityZone),
 				Region: c.Region,
+			}
+			if i.State != nil {
+				inst.State = string(i.State.Name)
+			}
+			if i.Placement != nil {
+				inst.AZ = aws.ToString(i.Placement.AvailabilityZone)
 			}
 			if i.PublicIpAddress != nil {
 				inst.PublicIP = aws.ToString(i.PublicIpAddress)
@@ -350,12 +354,15 @@ func (c *Client) ListStacks(ctx context.Context) ([]Stack, error) {
 	}
 	var stacks []Stack
 	for _, s := range out.Stacks {
-		stacks = append(stacks, Stack{
+		st := Stack{
 			Name:   aws.ToString(s.StackName),
 			Status: string(s.StackStatus),
-			Drift:  string(s.DriftInformation.StackDriftStatus),
 			Region: c.Region,
-		})
+		}
+		if s.DriftInformation != nil {
+			st.Drift = string(s.DriftInformation.StackDriftStatus)
+		}
+		stacks = append(stacks, st)
 	}
 	return stacks, nil
 }

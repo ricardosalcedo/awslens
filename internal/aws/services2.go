@@ -197,8 +197,10 @@ func (c *Client) ListGlueJobs(ctx context.Context) ([]GlueJob, error) {
 		job := GlueJob{
 			Name:   aws.ToString(j.Name),
 			Role:   aws.ToString(j.Role),
-			Type:   aws.ToString(j.Command.ScriptLocation),
 			Region: c.Region,
+		}
+		if j.Command != nil {
+			job.Type = aws.ToString(j.Command.ScriptLocation)
 		}
 		if j.LastModifiedOn != nil {
 			job.LastModified = j.LastModifiedOn.Format("2006-01-02")
