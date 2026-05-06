@@ -95,6 +95,9 @@ func (c *Client) GetOSDomainDetail(ctx context.Context, name string) (*OSDomainD
 		return nil, err
 	}
 	d := out.DomainStatus
+	if d == nil {
+		return &OSDomainDetail{Name: name}, nil
+	}
 	detail := &OSDomainDetail{
 		Name:          aws.ToString(d.DomainName),
 		EngineVersion: aws.ToString(d.EngineVersion),
@@ -131,15 +134,13 @@ func (c *Client) ListMSKClusters(ctx context.Context) ([]MSKCluster, error) {
 	var clusters []MSKCluster
 	for _, cl := range out.ClusterInfoList {
 		mc := MSKCluster{
-			Name:   aws.ToString(cl.ClusterName),
-			State:  string(cl.State),
-			Region: c.Region,
+			Name:    aws.ToString(cl.ClusterName),
+			State:   string(cl.State),
+			Brokers: aws.ToInt32(cl.NumberOfBrokerNodes),
+			Region:  c.Region,
 		}
 		if cl.CurrentBrokerSoftwareInfo != nil {
 			mc.Version = aws.ToString(cl.CurrentBrokerSoftwareInfo.KafkaVersion)
-		}
-		if cl.BrokerNodeGroupInfo != nil {
-			mc.Brokers = aws.ToInt32(cl.NumberOfBrokerNodes)
 		}
 		clusters = append(clusters, mc)
 	}
