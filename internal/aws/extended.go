@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -117,42 +118,45 @@ type DynamoTable struct {
 func (c *Client) ListDynamoTables(ctx context.Context) ([]DynamoTable, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
+
 	svc := dynamodb.NewFromConfig(c.Config)
 	paginator := dynamodb.NewListTablesPaginator(svc, &dynamodb.ListTablesInput{})
-	var tables []DynamoTable
+	var names []string
 	for paginator.HasMorePages() {
 		out, err := paginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
-		for _, name := range out.TableNames {
-			desc, err := svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(name)})
+		names = append(names, out.TableNames...)
+	}
+	tables := make([]DynamoTable, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
+		tables[i] = DynamoTable{Name: name, Region: c.Region}
+		wg.Add(1)
+		go func(idx int, tblName string) {
+			defer wg.Done()
+			desc, err := svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(tblName)})
 			if err != nil {
-				tables = append(tables, DynamoTable{Name: name})
-				continue
+				return
 			}
 			t := desc.Table
-			dt := DynamoTable{
-				Name:      name,
-				Status:    string(t.TableStatus),
-				ItemCount: aws.ToInt64(t.ItemCount),
-				SizeBytes: aws.ToInt64(t.TableSizeBytes),
-			}
+			tables[idx].Status = string(t.TableStatus)
+			tables[idx].ItemCount = aws.ToInt64(t.ItemCount)
+			tables[idx].SizeBytes = aws.ToInt64(t.TableSizeBytes)
 			if t.BillingModeSummary != nil {
-				dt.BillingMode = string(t.BillingModeSummary.BillingMode)
+				tables[idx].BillingMode = string(t.BillingModeSummary.BillingMode)
 			}
 			for _, ks := range t.KeySchema {
 				if ks.KeyType == "HASH" {
-					dt.PKName = aws.ToString(ks.AttributeName)
+					tables[idx].PKName = aws.ToString(ks.AttributeName)
 				} else {
-					dt.SKName = aws.ToString(ks.AttributeName)
+					tables[idx].SKName = aws.ToString(ks.AttributeName)
 				}
 			}
-			dt.Region = c.Region
-			tables = append(tables, dt)
-		}
+		}(i, name)
 	}
+	wg.Wait()
 	return tables, nil
 }
 

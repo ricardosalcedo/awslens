@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -283,29 +284,33 @@ type CodeRepo struct {
 func (c *Client) ListCodeRepos(ctx context.Context) ([]CodeRepo, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
+
 	svc := codecommit.NewFromConfig(c.Config)
 	out, err := svc.ListRepositories(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	var repos []CodeRepo
-	for _, r := range out.Repositories {
-		repo := CodeRepo{
+	repos := make([]CodeRepo, len(out.Repositories))
+	var wg sync.WaitGroup
+	for i, r := range out.Repositories {
+		repos[i] = CodeRepo{
 			Name:   aws.ToString(r.RepositoryName),
 			Region: c.Region,
 		}
-		// get details for clone URL
-		detail, err := svc.GetRepository(ctx, &codecommit.GetRepositoryInput{RepositoryName: r.RepositoryName})
-		if err == nil && detail.RepositoryMetadata != nil {
-			repo.Description = aws.ToString(detail.RepositoryMetadata.RepositoryDescription)
-			repo.CloneURL = aws.ToString(detail.RepositoryMetadata.CloneUrlHttp)
-			if detail.RepositoryMetadata.LastModifiedDate != nil {
-				repo.LastModified = detail.RepositoryMetadata.LastModifiedDate.Format("2006-01-02")
+		wg.Add(1)
+		go func(idx int, repoName *string) {
+			defer wg.Done()
+			detail, err := svc.GetRepository(ctx, &codecommit.GetRepositoryInput{RepositoryName: repoName})
+			if err == nil && detail.RepositoryMetadata != nil {
+				repos[idx].Description = aws.ToString(detail.RepositoryMetadata.RepositoryDescription)
+				repos[idx].CloneURL = aws.ToString(detail.RepositoryMetadata.CloneUrlHttp)
+				if detail.RepositoryMetadata.LastModifiedDate != nil {
+					repos[idx].LastModified = detail.RepositoryMetadata.LastModifiedDate.Format("2006-01-02")
+				}
 			}
-		}
-		repos = append(repos, repo)
+		}(i, r.RepositoryName)
 	}
+	wg.Wait()
 	return repos, nil
 }
 
