@@ -61,6 +61,19 @@ awslens --region us-west-2     # override region
 awslens --months-back 3        # start costs view 3 months back
 ```
 
+### Headless Export
+
+Export service data to stdout without launching the TUI — useful for scripting, CI pipelines, and automation:
+
+```bash
+awslens --profile admin --output json                  # export all services as JSON
+awslens --profile admin --output csv                   # export all services as CSV
+awslens --profile admin --output json --service ec2    # export only EC2 instances
+awslens --profile admin --output csv --service lambda  # export only Lambda functions
+```
+
+Available services: `ec2`, `lambda`, `s3`, `rds`, `dynamodb`, `apigateway`, `ecs`, `ecr`, `stepfunctions`, `elb`, `route53`, `secretsmanager`, `ssm`, `sqs`, `sns`, `cloudwatch`, `cloudformation`, `costs`, `elasticache`, `opensearch`, `msk`, `glue`, `athena`, `codecommit`, `codepipeline`, `codebuild`, `eventbridge`, `waf`.
+
 ## Key Bindings
 
 | Key | Action |
