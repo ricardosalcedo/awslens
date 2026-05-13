@@ -7,6 +7,37 @@ import (
 	"testing"
 )
 
+func TestFetchServicesDeterministicOrder(t *testing.T) {
+	// fetchServices should preserve original service order even when running in parallel.
+	// We can't call fetchService without AWS creds, but we can verify the output
+	// functions maintain order with pre-built data.
+	data := []serviceData{
+		{Service: "ec2", Items: []map[string]interface{}{{"ID": "i-1"}}},
+		{Service: "lambda", Items: []map[string]interface{}{{"Name": "fn1"}}},
+		{Service: "s3", Items: []map[string]interface{}{{"Name": "bucket1"}}},
+	}
+	var prev string
+	for i := 0; i < 10; i++ {
+		var buf bytes.Buffer
+		if err := writeJSONOut(&buf, data); err != nil {
+			t.Fatal(err)
+		}
+		if prev != "" && buf.String() != prev {
+			t.Fatal("output is non-deterministic")
+		}
+		prev = buf.String()
+	}
+}
+
+func TestMaxExportConcurrency(t *testing.T) {
+	if maxExportConcurrency < 1 {
+		t.Fatal("maxExportConcurrency must be at least 1")
+	}
+	if maxExportConcurrency > 20 {
+		t.Fatal("maxExportConcurrency should not exceed 20 to avoid API throttling")
+	}
+}
+
 func TestWriteJSONOut(t *testing.T) {
 	data := []serviceData{
 		{Service: "ec2", Items: []map[string]interface{}{

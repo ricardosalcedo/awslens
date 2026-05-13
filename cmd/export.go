@@ -9,9 +9,13 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	awsclient "github.com/awslens/awslens/internal/aws"
 )
+
+// maxExportConcurrency limits parallel service fetches to avoid API throttling.
+const maxExportConcurrency = 5
 
 // validServices lists all exportable service names.
 var validServices = []string{
@@ -72,12 +76,39 @@ type serviceData struct {
 }
 
 func fetchServices(ctx context.Context, client *awsclient.Client, services []string) []serviceData {
-	var results []serviceData
-	for _, svc := range services {
-		items := fetchService(ctx, client, svc)
-		if len(items) > 0 {
-			results = append(results, serviceData{Service: svc, Items: items})
-		}
+	type indexedResult struct {
+		index int
+		data  serviceData
+	}
+
+	sem := make(chan struct{}, maxExportConcurrency)
+	var mu sync.Mutex
+	var collected []indexedResult
+	var wg sync.WaitGroup
+
+	for i, svc := range services {
+		wg.Add(1)
+		go func(idx int, s string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			items := fetchService(ctx, client, s)
+			if len(items) > 0 {
+				mu.Lock()
+				collected = append(collected, indexedResult{index: idx, data: serviceData{Service: s, Items: items}})
+				mu.Unlock()
+			}
+		}(i, svc)
+	}
+	wg.Wait()
+
+	// Sort by original order to ensure deterministic output
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].index < collected[j].index
+	})
+	results := make([]serviceData, 0, len(collected))
+	for _, r := range collected {
+		results = append(results, r.data)
 	}
 	return results
 }
